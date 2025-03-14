@@ -1,0 +1,77 @@
+# Ignorer les fichiers et dossiers Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Ignorer les fichiers d'environnement
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Ignorer les fichiers de logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+.log
+
+# Ignorer les dépendances générées
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Ignorer les fichiers de compilation frontend
+frontend/dist/
+frontend/.vite/
+frontend/.output/
+
+# Ignorer les fichiers de build backend
+backend/dist/
+backend/.output/
+
+# Ignorer les fichiers système et IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+
+# Ignorer les fichiers de cache
+.cache/
+.cache-loader/
+public/hot
+storage/debugbar
+storage/framework/cache
+storage/framework/sessions
+storage/framework/views
+storage/logs
+
+# Ignorer les fichiers temporaires
+temp/
+tmp/
+
+# Ignorer les fichiers Docker
+docker-compose.override.yml
+docker-compose.dev.yml
+docker-compose.prod.yml
+
+# Ignorer les fichiers de tests
+coverage/
+*.lcov
+
+# Ignorer les fichiers spécifiques à certaines plateformes
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+
+# Ignorer les fichiers de déploiement
+.deploy/
+.dockerignore
