@@ -30,7 +30,7 @@
           class="nav-link"
           active-class="bg-purple-500"
         >
-          🎮 Team Creation
+          🎮 Créer Équipes
         </router-link>
       </nav>
     </div>
