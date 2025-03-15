@@ -1,59 +1,57 @@
 <template>
-  <template>
-  <div class="flex items-center justify-center min-h-screen bg-gray-100">
-    <h1 class="text-4xl font-bold text-blue-600">🎉 Tailwind fonctionne !</h1>
-  </div>
-</template>
-
-  <header>
-    <h1 class="font-bold text-blue-600">League of Legends Stats Tracker</h1>
-    <nav>
-      <router-link to="/">🏆 Ajouter une game</router-link>
-      <router-link to="/stats">📊 Voir les stats</router-link>
-      <router-link to="/history">Historique</router-link>
-      <router-link to="/teamcreation">teamcreation</router-link>
-    </nav>
+  <header class="bg-gray-900 text-white shadow-md">
+    <div class="max-w-6xl mx-auto flex justify-between items-center p-4">
+      <h1 class="text-2xl font-bold text-blue-400">EgoMeter</h1>
+      
+      <nav class="flex gap-4">
+        <router-link 
+          to="/" 
+          class="nav-link"
+          active-class="bg-blue-500"
+        >
+          🏆 Ajouter une game
+        </router-link>
+        <router-link 
+          to="/stats" 
+          class="nav-link"
+          active-class="bg-green-500"
+        >
+          📊 Voir les stats
+        </router-link>
+        <router-link 
+          to="/history" 
+          class="nav-link"
+          active-class="bg-yellow-500"
+        >
+          📜 Historique
+        </router-link>
+        <router-link 
+          to="/teamcreation" 
+          class="nav-link"
+          active-class="bg-purple-500"
+        >
+          🎮 Team Creation
+        </router-link>
+      </nav>
+    </div>
   </header>
-  <main>
+
+  <main class="p-6 max-w-6xl mx-auto">
     <router-view />
   </main>
 </template>
 
 <style scoped>
-header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  background: #2c3e50;
-  color: white;
-  padding: 15px 0;
-}
-
-h1 {
-  margin: 0;
-  font-size: 24px;
-}
-
-nav {
-  margin-top: 10px;
-  display: flex;
-  gap: 20px;
-}
-
-nav a {
+.nav-link {
   text-decoration: none;
   color: white;
   font-weight: bold;
-  padding: 8px 12px;
-  border-radius: 5px;
-  transition: background 0.3s;
+  padding: 10px 14px;
+  border-radius: 6px;
+  transition: background 0.3s ease-in-out;
 }
 
-nav a:hover {
-  background: #34495e;
-}
-
-main {
-  padding: 20px;
+.nav-link:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 </style>

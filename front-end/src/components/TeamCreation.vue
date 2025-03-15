@@ -35,6 +35,11 @@ const createTeamsRequest = async () => {
   }
 };
 
+// Fonction pour récupérer l'icône de la lane
+const getLaneIcon = (lane) => {
+  const extension = lane === 'adc' ? 'png' : 'webp';
+  return new URL(`../assets/${lane}.${extension}`, import.meta.url).href;
+};
 onMounted(fetchPlayers);
 </script>
 
@@ -82,9 +87,9 @@ onMounted(fetchPlayers);
         <h3 class="text-xl font-semibold text-blue-700 mb-4">Équipe Bleue</h3>
         <ul>
           <li v-for="player in teams.blue" :key="player.id" class="p-3 bg-white shadow-sm rounded-md flex justify-between items-center">
-            <div>
+            <div class="flex items-center gap-2">
               <span class="font-semibold text-gray-800">{{ player.name }}</span>
-              <span v-if="assignLanes" class="text-sm text-gray-600"> - {{ player.lane }}</span>
+              <img v-if="assignLanes" :src="getLaneIcon(player.lane)" :alt="player.lane" class="w-6 h-6">
             </div>
             <div class="text-sm text-gray-600">
               <span v-if="assignLanes && balanceTeams"> WR Lane: <span class="text-blue-600">{{ player.statsByLane && player.statsByLane[player.lane]?.gamesPlayed > 0 ? (player.statsByLane[player.lane].winRate * 100).toFixed(2) + '%' : '0%' }}</span></span>
@@ -99,9 +104,9 @@ onMounted(fetchPlayers);
         <h3 class="text-xl font-semibold text-red-700 mb-4">Équipe Rouge</h3>
         <ul>
           <li v-for="player in teams.red" :key="player.id" class="p-3 bg-white shadow-sm rounded-md flex justify-between items-center">
-            <div>
+            <div class="flex items-center gap-2">
               <span class="font-semibold text-gray-800">{{ player.name }}</span>
-              <span v-if="assignLanes" class="text-sm text-gray-600"> - {{ player.lane }}</span>
+              <img v-if="assignLanes" :src="getLaneIcon(player.lane)" :alt="player.lane" class="w-6 h-6 object-cover">
             </div>
             <div class="text-sm text-gray-600">
               <span v-if="assignLanes && balanceTeams"> WR Lane: <span class="text-red-600">{{ player.statsByLane && player.statsByLane[player.lane]?.gamesPlayed > 0 ? (player.statsByLane[player.lane].winRate * 100).toFixed(2) + '%' : '0%' }}</span></span>

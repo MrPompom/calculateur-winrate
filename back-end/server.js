@@ -12,10 +12,11 @@ const PORT = process.env.PORT || 5000;
 app.use(express.json());
 
 app.use(cors({
-  origin: ['https://calculateur-winrate.vercel.app'], // Autoriser uniquement ton frontend
+  origin: '*', // Permet toutes les origines
   methods: 'GET,POST,PUT,DELETE',
   allowedHeaders: 'Content-Type,Authorization'
 }));
+
 
 
 // Connexion à MongoDB
@@ -314,27 +315,20 @@ const createTeams = (players, assignLanes, balanceTeams) => {
 
   let blueTeam = [];
   let redTeam = [];
-  let assignedPlayers = new Set(); // ✅ Pour éviter qu'un joueur soit assigné plusieurs fois
+  let assignedPlayers = new Set();
 
   if (balanceTeams && assignLanes) {
       console.log("Mode équilibré avec assignation des lanes");
 
-      // Trier les joueurs du plus fort au plus faible selon leur winrate global
       players.sort((a, b) => b.winRate - a.winRate);
 
       let blueTotalWinRate = 0;
       let redTotalWinRate = 0;
 
-      // Initialiser les pools de joueurs par rôle
       let lanesPool = {
-          top: [],
-          jungle: [],
-          mid: [],
-          adc: [],
-          support: []
+          top: [], jungle: [], mid: [], adc: [], support: []
       };
 
-      // Remplir les pools avec les joueurs ayant joué ces lanes
       players.forEach(player => {
           Object.entries(player.statsByLane).forEach(([lane, stats]) => {
               if (stats.gamesPlayed > 0) {
@@ -343,17 +337,14 @@ const createTeams = (players, assignLanes, balanceTeams) => {
           });
       });
 
-      // Trier chaque pool par winrate sur la lane spécifique
       Object.keys(lanesPool).forEach(lane => {
           lanesPool[lane].sort((a, b) => b.statsByLane[lane].winRate - a.statsByLane[lane].winRate);
       });
 
-      // Assigner les joueurs aux lanes et équilibrer les équipes
       Object.keys(lanesPool).forEach(lane => {
           if (lanesPool[lane].length >= 2) {
-              // Prendre les 2 meilleurs joueurs pour cette lane et les répartir
               let bestPlayers = lanesPool[lane].filter(p => !assignedPlayers.has(p.id)).slice(0, 2);
-              
+
               if (bestPlayers.length === 2) {
                   if (blueTotalWinRate <= redTotalWinRate) {
                       blueTeam.push({ ...bestPlayers[0], lane });
@@ -373,7 +364,6 @@ const createTeams = (players, assignLanes, balanceTeams) => {
           }
       });
 
-      // ✅ Vérifier les rôles manquants et assigner les joueurs restants
       const remainingPlayers = players.filter(p => !assignedPlayers.has(p.id));
       Object.keys(lanesPool).forEach(lane => {
           if (blueTeam.filter(p => p.lane === lane).length === 0 && remainingPlayers.length > 0) {
@@ -411,8 +401,23 @@ const createTeams = (players, assignLanes, balanceTeams) => {
           }
       }
 
+  } else if (assignLanes) {
+      console.log("Mode aléatoire avec assignation des lanes");
+
+      players = players.sort(() => Math.random() - 0.5);
+      let availableLanes = ['top', 'jungle', 'mid', 'adc', 'support'];
+
+      blueTeam = players.slice(0, 5).map((player, index) => ({
+          ...player, lane: availableLanes[index]
+      }));
+
+      redTeam = players.slice(5, 10).map((player, index) => ({
+          ...player, lane: availableLanes[index]
+      }));
+
   } else {
       console.log("Mode totalement aléatoire");
+
       players = players.sort(() => Math.random() - 0.5);
       blueTeam = players.slice(0, 5);
       redTeam = players.slice(5, 10);
@@ -420,6 +425,7 @@ const createTeams = (players, assignLanes, balanceTeams) => {
 
   return { blueTeam, redTeam };
 };
+
 
 
 
