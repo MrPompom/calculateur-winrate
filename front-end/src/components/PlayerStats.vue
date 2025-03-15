@@ -1,6 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue';
-import { getAllPlayers, getPlayerStats } from '../services/api_service';
+import { getAllPlayers, getPlayerStats, recalculateStats  } from '../services/api_service';
 
 const playersList = ref([]);
 const selectedPlayer = ref('');
@@ -29,10 +29,33 @@ const getLaneIcon = (lane) => {
   return new URL(`../assets/${lane}.${extension}`, import.meta.url).href;
 };
 
+const recalculateStatsTrigger = async () => {
+  try {
+    await recalculateStats();
+    alert("Les statistiques ont été recalculées avec succès !");
+  } catch (error) {
+    console.error("Erreur lors du recalcul des stats:", error);
+  }
+};
+
 
 // Fonction pour formater le nom du champion pour l'URL
 const formatChampionName = (champ) => {
-  return champ.replace(/\s+/g, '_');
+  return champ
+    .replace(/__/g, '.') // Remplace "__" par "."
+    .replace(/(?<!_)_(?!_)/g, ' '); // Remplace un seul "_" par un espace
+};
+
+
+const formatChampionImageName = (champ) => {
+  return champ
+    .replace(/Wukong/i, 'MonkeyKing') // Remplace Wukong par MonkeyKing
+    .replace(/K'Sante/i, 'KSante') // Remplace K'Sante par KSante
+    .replace(/\s+/g, '')   // Supprime les espaces
+    .replace(/_/g, '')     // Supprime les underscores
+    .replace(/\./g, '')    // Supprime les points
+    .replace(/'./g, match => match[1].toLowerCase()) // Assure que la lettre après ' est minuscule
+    .replace(/'/g, ''); // Supprime les apostrophes après modification
 };
 
 onMounted(fetchPlayers);
@@ -50,6 +73,10 @@ onMounted(fetchPlayers);
       <button @click="fetchPlayerStats" class="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition">
         Voir les stats
       </button>
+      <button @click="recalculateStatsTrigger" class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700">
+        🔄 Recalculer les Stats
+      </button>
+
     </div>
 
     <div v-if="playerStats" class="stats mt-8 p-6 bg-white shadow-md rounded-lg border border-gray-200">
@@ -98,9 +125,9 @@ onMounted(fetchPlayers);
         <h4 class="text-lg font-medium text-gray-800">Statistiques par Champion</h4>
         <ul class="grid grid-cols-2 md:grid-cols-3 gap-4">
           <li v-for="(stats, champ) in playerStats.statsByChampion" :key="champ" class="p-3 bg-white rounded-md shadow-xs border border-gray-200 flex flex-col items-center">
-            <img :src="`https://ddragon.leagueoflegends.com/cdn/15.5.1/img/champion/${formatChampionName(champ)}.png`" 
+            <img :src="`https://ddragon.leagueoflegends.com/cdn/15.5.1/img/champion/${formatChampionImageName(champ)}.png`" 
                  :alt="champ" class="w-16 h-16 object-cover rounded-lg">
-            <strong class="text-gray-700 mt-2">{{ champ }}</strong>
+            <strong class="text-gray-700 mt-2">{{ formatChampionName(champ) }}</strong>
             <p class="text-sm">{{ stats.gamesPlayed }} games</p>
             <p class="text-sm text-gray-600">KDA: {{ (stats.kills / stats.gamesPlayed).toFixed(2) }}/{{ (stats.deaths / stats.gamesPlayed).toFixed(2) }}/{{ (stats.assists / stats.gamesPlayed).toFixed(2) }}</p>
             <p class="text-sm text-gray-700">Winrate: {{ (stats.wins / stats.gamesPlayed * 100).toFixed(2) }}%</p>

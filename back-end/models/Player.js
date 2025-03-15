@@ -1,8 +1,41 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 const PlayerSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true },
-  games: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Game' }] // Référence aux games jouées
-});
+  gamesPlayed: { type: Number, default: 0 },
+  totalKills: { type: Number, default: 0 },
+  totalDeaths: { type: Number, default: 0 },
+  totalAssists: { type: Number, default: 0 },
+  winRate: { type: Number, default: 0 },
 
-export const Player = mongoose.model('Player', PlayerSchema);
+  // 📌 Stockage dynamique des stats par lane
+  statsByLane: {
+    type: Map,
+    of: {
+      gamesPlayed: { type: Number, default: 0 },
+      kills: { type: Number, default: 0 },
+      deaths: { type: Number, default: 0 },
+      assists: { type: Number, default: 0 },
+      wins: { type: Number, default: 0 },
+      winRate: { type: Number, default: 0 }
+    },
+    default: {}
+  },
+
+  // 📌 Stockage dynamique des stats par champion (ajouté uniquement si joué)
+  statsByChampion: {
+    type: Map,
+    of: {
+      gamesPlayed: { type: Number, default: 0 },
+      kills: { type: Number, default: 0 },
+      deaths: { type: Number, default: 0 },
+      assists: { type: Number, default: 0 },
+      wins: { type: Number, default: 0 },
+      winRate: { type: Number, default: 0 }
+    },
+    default: {}
+  }
+
+}, { timestamps: true });
+
+export default mongoose.model('Player', PlayerSchema);
