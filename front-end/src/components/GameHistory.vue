@@ -10,6 +10,7 @@ const expandedGames = ref({});
 const fetchGames = async () => {
   try {
     gamesList.value = await getAllGames();
+    gamesList.value.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   } catch (error) {
     console.error('Erreur lors de la récupération des games:', error);
   } finally {
