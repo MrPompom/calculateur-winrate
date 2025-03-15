@@ -5,6 +5,7 @@
       <router-link to="/">🏆 Ajouter une game</router-link>
       <router-link to="/stats">📊 Voir les stats</router-link>
       <router-link to="/history">Historique</router-link>
+      <router-link to="/teamcreation">teamcreation</router-link>
     </nav>
   </header>
   <main>

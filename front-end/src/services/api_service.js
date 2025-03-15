@@ -52,3 +52,17 @@ export const getAllGames = async () => {
     throw error;
   }
 };
+
+export const createTeams = async (players, assignLanes, balanceTeams) => {
+    try {
+        const response = await axios.post(`${API_URL}/create-teams`, {
+            players,  // Envoie juste les ID et noms des joueurs
+            assignLanes,
+            balanceTeams
+        });
+        return response.data;
+    } catch (error) {
+        console.error("Erreur lors de la création des équipes :", error);
+        return null;
+    }
+};
