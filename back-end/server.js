@@ -10,7 +10,14 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(express.json());
-app.use(cors());
+import cors from 'cors';
+
+app.use(cors({
+  origin: ['https://calculateur-winrate.vercel.app'], // Autoriser uniquement ton frontend
+  methods: 'GET,POST,PUT,DELETE',
+  allowedHeaders: 'Content-Type,Authorization'
+}));
+
 
 // Connexion à MongoDB
 mongoose.connect(process.env.MONGO_URI, {
