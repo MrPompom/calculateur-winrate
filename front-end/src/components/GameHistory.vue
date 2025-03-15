@@ -19,7 +19,7 @@ const fetchGames = async () => {
 
 // Fonction pour récupérer les icônes des champions
 const getChampionIcon = (champion) => {
-  return `https://ddragon.leagueoflegends.com/cdn/15.5.1/img/champion/${champion.replace(/\s+/g, '_')}.png`;
+  return `https://ddragon.leagueoflegends.com/cdn/15.5.1/img/champion/${champion.replace(/\s+/g, '')}.png`;
 };
 
 // Fonction pour récupérer les icônes des lanes
