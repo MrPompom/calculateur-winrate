@@ -64,7 +64,7 @@ onMounted(fetchPlayers);
         <li v-for="player in teams.blue" :key="player.id">
           {{ player.name }}
           <span v-if="assignLanes"> - Lane: {{ player.lane }}</span>
-          <span v-if="assignLanes && balanceTeams"> (Winrate sur lane: {{ player.laneWinRate }}%)</span>
+          <span v-if="assignLanes && balanceTeams"> (Winrate sur lane: {{ player.statsByLane && player.statsByLane[player.lane] ? (player.statsByLane[player.lane].gamesPlayed > 0 ? (player.statsByLane[player.lane].winRate * 100).toFixed(2) + '%' : '0%') : 'N/A' }})</span>
           <span v-if="balanceTeams"> - Winrate global: {{ (player.winRate * 100).toFixed(2) }}%</span>
         </li>
       </ul>
@@ -74,7 +74,7 @@ onMounted(fetchPlayers);
         <li v-for="player in teams.red" :key="player.id">
           {{ player.name }}
           <span v-if="assignLanes"> - Lane: {{ player.lane }}</span>
-          <span v-if="assignLanes && balanceTeams"> (Winrate sur lane: {{ player.laneWinRate }}%)</span>
+          <span v-if="assignLanes && balanceTeams"> (Winrate sur lane: {{ player.statsByLane[player.lane]?.winRate ? (player.statsByLane[player.lane].winRate * 100).toFixed(2) + '%' : 'N/A' }})</span>
           <span v-if="balanceTeams"> - Winrate global: {{ (player.winRate * 100).toFixed(2) }}%</span>
         </li>
       </ul>

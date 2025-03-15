@@ -44,7 +44,14 @@ const PlayerSchema = new mongoose.Schema({
   totalKills: { type: Number, default: 0 },
   totalDeaths: { type: Number, default: 0 },
   totalAssists: { type: Number, default: 0 },
-  winRate: { type: Number, default: 0 }
+  winRate: { type: Number, default: 0 },
+  statsByLane: {
+    top: { gamesPlayed: { type: Number, default: 0 }, winRate: { type: Number, default: 0 } },
+    jungle: { gamesPlayed: { type: Number, default: 0 }, winRate: { type: Number, default: 0 } },
+    mid: { gamesPlayed: { type: Number, default: 0 }, winRate: { type: Number, default: 0 } },
+    adc: { gamesPlayed: { type: Number, default: 0 }, winRate: { type: Number, default: 0 } },
+    support: { gamesPlayed: { type: Number, default: 0 }, winRate: { type: Number, default: 0 } }
+  }
 });
 
 const Player = mongoose.model('Player', PlayerSchema);
@@ -56,18 +63,42 @@ app.post('/games', async (req, res) => {
     
     const updatedPlayers = await Promise.all(players.map(async (p) => {
       let player = await Player.findOne({ name: p.name });
-      
+
       if (!player) {
-        player = new Player({ name: p.name, gamesPlayed: 0, totalKills: 0, totalDeaths: 0, totalAssists: 0, winRate: 0 });
+        player = new Player({ 
+          name: p.name, 
+          gamesPlayed: 0, 
+          totalKills: 0, 
+          totalDeaths: 0, 
+          totalAssists: 0, 
+          winRate: 0,
+          statsByLane: {
+            top: { gamesPlayed: 0, winRate: 0 },
+            jungle: { gamesPlayed: 0, winRate: 0 },
+            mid: { gamesPlayed: 0, winRate: 0 },
+            adc: { gamesPlayed: 0, winRate: 0 },
+            support: { gamesPlayed: 0, winRate: 0 }
+          }
+        });
       }
-      
+
+      // Mise à jour des stats générales
       player.gamesPlayed += 1;
       player.totalKills += p.kills;
       player.totalDeaths += p.deaths;
       player.totalAssists += p.assists;
       player.winRate = ((player.winRate * (player.gamesPlayed - 1)) + (p.won ? 1 : 0)) / player.gamesPlayed;
-      
+
+      // Mise à jour des stats par lane
+      if (p.lane && player.statsByLane[p.lane]) {
+        let laneStats = player.statsByLane[p.lane];
+
+        laneStats.gamesPlayed += 1;
+        laneStats.winRate = ((laneStats.winRate * (laneStats.gamesPlayed - 1)) + (p.won ? 1 : 0)) / laneStats.gamesPlayed;
+      }
+
       await player.save();
+
       return {
         playerId: player._id,
         champion: p.champion,
@@ -79,15 +110,18 @@ app.post('/games', async (req, res) => {
         won: p.won
       };
     }));
-    
+
+    // Enregistrement de la game
     const newGame = new Game({ players: updatedPlayers, winningTeam });
     await newGame.save();
     
     res.status(201).json({ message: 'Game enregistrée avec succès', gameId: newGame._id });
   } catch (error) {
+    console.error("Erreur lors de l'ajout de la game :", error);
     res.status(500).json({ error: 'Erreur lors de l\'ajout de la game' });
   }
 });
+
 
 // Récupérer toutes les games
 app.get('/games', async (req, res) => {
@@ -121,69 +155,47 @@ app.get('/players', async (req, res) => {
 });
 
 app.post('/recalculate-stats', async (req, res) => {
-  try {
-    // Récupérer toutes les games enregistrées
-    const games = await Game.find().populate('players.playerId', 'name');
+    try {
+        const players = await Player.find();
 
-    // Réinitialiser les stats de tous les joueurs
-    await Player.updateMany({}, {
-      gamesPlayed: 0,
-      totalKills: 0,
-      totalDeaths: 0,
-      totalAssists: 0,
-      winRate: 0,
-    });
+        for (const player of players) {
+            // Récupérer toutes les games où ce joueur a participé
+            const games = await Game.find({ "players.playerId": player._id });
 
-    // Stocker les nouvelles stats
-    const playerStats = {};
+            let statsByLane = {};
 
-    // Parcourir chaque game et recalculer les stats
-    games.forEach(game => {
-      game.players.forEach(p => {
-        // Vérifier si le joueur a bien un `name`
-        if (!p.playerId || !p.playerId.name) return;
+            games.forEach(game => {
+                const playerGame = game.players.find(p => p.playerId.equals(player._id));
 
-        const playerName = p.playerId.name;
+                if (!playerGame) return;
 
-        if (!playerStats[playerName]) {
-          playerStats[playerName] = {
-            gamesPlayed: 0,
-            totalKills: 0,
-            totalDeaths: 0,
-            totalAssists: 0,
-            wins: 0,
-          };
+                const lane = playerGame.lane;
+                if (!statsByLane[lane]) {
+                    statsByLane[lane] = { gamesPlayed: 0, wins: 0 };
+                }
+
+                statsByLane[lane].gamesPlayed += 1;
+                if (playerGame.won) statsByLane[lane].wins += 1;
+            });
+
+            // Calculer le winrate par lane
+            Object.keys(statsByLane).forEach(lane => {
+                statsByLane[lane].winRate = statsByLane[lane].gamesPlayed > 0
+                    ? statsByLane[lane].wins / statsByLane[lane].gamesPlayed
+                    : 0;
+            });
+
+            // Mettre à jour le joueur
+            await Player.updateOne({ _id: player._id }, { statsByLane });
         }
 
-        // Mettre à jour les statistiques du joueur
-        playerStats[playerName].gamesPlayed += 1;
-        playerStats[playerName].totalKills += p.kills;
-        playerStats[playerName].totalDeaths += p.deaths;
-        playerStats[playerName].totalAssists += p.assists;
-        if (p.won) playerStats[playerName].wins += 1;
-      });
-    });
-
-    // Mettre à jour la base de données pour chaque joueur
-    for (const [name, stats] of Object.entries(playerStats)) {
-      await Player.updateOne(
-        { name },
-        {
-          gamesPlayed: stats.gamesPlayed,
-          totalKills: stats.totalKills,
-          totalDeaths: stats.totalDeaths,
-          totalAssists: stats.totalAssists,
-          winRate: stats.gamesPlayed ? stats.wins / stats.gamesPlayed : 0,
-        }
-      );
+        res.json({ message: "Stats mises à jour !" });
+    } catch (error) {
+        console.error("Erreur lors du recalcul des stats :", error);
+        res.status(500).json({ message: "Erreur serveur." });
     }
-
-    res.json({ message: "Statistiques des joueurs recalculées avec succès." });
-  } catch (error) {
-    console.error("Erreur lors du recalcul des stats :", error);
-    res.status(500).json({ error: "Erreur lors du recalcul des statistiques." });
-  }
 });
+
 
 
 app.post('/players', async (req, res) => {
@@ -267,6 +279,176 @@ app.get('/players/:name/stats', async (req, res) => {
     console.error("Erreur lors de la récupération des statistiques du joueur :", error);
     res.status(500).json({ error: "Erreur serveur" });
   }
+});
+
+const lanes = ['top', 'jungle', 'mid', 'adc', 'support'];
+
+// Fonction pour récupérer les joueurs depuis MongoDB
+const fetchPlayersWithStats = async (playerIds) => {
+    try {
+        const players = await Player.find({ _id: { $in: playerIds } });
+
+        return players.map(player => ({
+            id: player._id.toString(), // Convertit en string pour éviter les problèmes de comparaison
+            name: player.name,
+            winRate: player.gamesPlayed > 0 ? player.winRate : 0,
+            statsByLane: player.statsByLane || {}
+        }));
+    } catch (error) {
+        console.error("Erreur lors de la récupération des joueurs:", error);
+        return [];
+    }
+};
+
+// Fonction pour créer des équipes équilibrées
+const createTeams = (players, assignLanes, balanceTeams) => {
+  if (players.length !== 10) {
+      throw new Error("Il doit y avoir exactement 10 joueurs.");
+  }
+
+  let blueTeam = [];
+  let redTeam = [];
+  let assignedPlayers = new Set(); // ✅ Pour éviter qu'un joueur soit assigné plusieurs fois
+
+  if (balanceTeams && assignLanes) {
+      console.log("Mode équilibré avec assignation des lanes");
+
+      // Trier les joueurs du plus fort au plus faible selon leur winrate global
+      players.sort((a, b) => b.winRate - a.winRate);
+
+      let blueTotalWinRate = 0;
+      let redTotalWinRate = 0;
+
+      // Initialiser les pools de joueurs par rôle
+      let lanesPool = {
+          top: [],
+          jungle: [],
+          mid: [],
+          adc: [],
+          support: []
+      };
+
+      // Remplir les pools avec les joueurs ayant joué ces lanes
+      players.forEach(player => {
+          Object.entries(player.statsByLane).forEach(([lane, stats]) => {
+              if (stats.gamesPlayed > 0) {
+                  lanesPool[lane].push(player);
+              }
+          });
+      });
+
+      // Trier chaque pool par winrate sur la lane spécifique
+      Object.keys(lanesPool).forEach(lane => {
+          lanesPool[lane].sort((a, b) => b.statsByLane[lane].winRate - a.statsByLane[lane].winRate);
+      });
+
+      // Assigner les joueurs aux lanes et équilibrer les équipes
+      Object.keys(lanesPool).forEach(lane => {
+          if (lanesPool[lane].length >= 2) {
+              // Prendre les 2 meilleurs joueurs pour cette lane et les répartir
+              let bestPlayers = lanesPool[lane].filter(p => !assignedPlayers.has(p.id)).slice(0, 2);
+              
+              if (bestPlayers.length === 2) {
+                  if (blueTotalWinRate <= redTotalWinRate) {
+                      blueTeam.push({ ...bestPlayers[0], lane });
+                      redTeam.push({ ...bestPlayers[1], lane });
+                      blueTotalWinRate += bestPlayers[0].statsByLane[lane].winRate;
+                      redTotalWinRate += bestPlayers[1].statsByLane[lane].winRate;
+                  } else {
+                      redTeam.push({ ...bestPlayers[0], lane });
+                      blueTeam.push({ ...bestPlayers[1], lane });
+                      redTotalWinRate += bestPlayers[0].statsByLane[lane].winRate;
+                      blueTotalWinRate += bestPlayers[1].statsByLane[lane].winRate;
+                  }
+
+                  assignedPlayers.add(bestPlayers[0].id);
+                  assignedPlayers.add(bestPlayers[1].id);
+              }
+          }
+      });
+
+      // ✅ Vérifier les rôles manquants et assigner les joueurs restants
+      const remainingPlayers = players.filter(p => !assignedPlayers.has(p.id));
+      Object.keys(lanesPool).forEach(lane => {
+          if (blueTeam.filter(p => p.lane === lane).length === 0 && remainingPlayers.length > 0) {
+              let fallbackPlayer = remainingPlayers.pop();
+              blueTeam.push({ ...fallbackPlayer, lane });
+              assignedPlayers.add(fallbackPlayer.id);
+          }
+          if (redTeam.filter(p => p.lane === lane).length === 0 && remainingPlayers.length > 0) {
+              let fallbackPlayer = remainingPlayers.pop();
+              redTeam.push({ ...fallbackPlayer, lane });
+              assignedPlayers.add(fallbackPlayer.id);
+          }
+      });
+
+      console.log("Équipes équilibrées avec lanes attribuées :", { blueTotalWinRate, redTotalWinRate });
+
+  } else if (balanceTeams) {
+      console.log("Mode équilibré sans assignation de lanes");
+
+      players.sort((a, b) => b.winRate - a.winRate);
+
+      let blueTotalWinRate = 0;
+      let redTotalWinRate = 0;
+
+      for (const player of players) {
+          if (!assignedPlayers.has(player.id)) {
+              if (blueTotalWinRate <= redTotalWinRate) {
+                  blueTeam.push(player);
+                  blueTotalWinRate += player.winRate;
+              } else {
+                  redTeam.push(player);
+                  redTotalWinRate += player.winRate;
+              }
+              assignedPlayers.add(player.id);
+          }
+      }
+
+  } else {
+      console.log("Mode totalement aléatoire");
+      players = players.sort(() => Math.random() - 0.5);
+      blueTeam = players.slice(0, 5);
+      redTeam = players.slice(5, 10);
+  }
+
+  return { blueTeam, redTeam };
+};
+
+
+
+// Fonction pour récupérer la lane avec le meilleur winrate d’un joueur
+const getBestLane = (player) => {
+    if (!player.statsByLane || Object.keys(player.statsByLane).length === 0) return 'fill';
+    return Object.keys(player.statsByLane).reduce((best, lane) =>
+        player.statsByLane[lane]?.winRate > (player.statsByLane[best]?.winRate || 0) ? lane : best, 'fill');
+};
+
+// Fonction pour récupérer le meilleur winrate par lane
+const getBestLaneWinRate = (player) => {
+    if (!player.statsByLane || Object.keys(player.statsByLane).length === 0) return 0;
+    return Math.max(...Object.values(player.statsByLane).map(lane => lane.winRate || 0));
+};
+
+// Route API pour créer des équipes
+app.post('/create-teams', async (req, res) => {
+    try {
+        const { players, assignLanes, balanceTeams } = req.body;
+        const playerIds = players.map(player => player._id);
+
+        // Récupération des statistiques des joueurs depuis MongoDB
+        const playersWithStats = await fetchPlayersWithStats(playerIds);
+
+        if (playersWithStats.length !== 10) {
+            return res.status(404).json({ message: "Certains joueurs n'ont pas été trouvés en base." });
+        }
+
+        const teams = createTeams(playersWithStats, assignLanes, balanceTeams);
+        res.json(teams);
+    } catch (error) {
+        console.error("Erreur lors de la création des équipes :", error);
+        res.status(500).json({ message: "Erreur serveur." });
+    }
 });
 
 
