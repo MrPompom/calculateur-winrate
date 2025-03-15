@@ -1,6 +1,12 @@
 <template>
+  <template>
+  <div class="flex items-center justify-center min-h-screen bg-gray-100">
+    <h1 class="text-4xl font-bold text-blue-600">🎉 Tailwind fonctionne !</h1>
+  </div>
+</template>
+
   <header>
-    <h1>League of Legends Stats Tracker</h1>
+    <h1 class="font-bold text-blue-600">League of Legends Stats Tracker</h1>
     <nav>
       <router-link to="/">🏆 Ajouter une game</router-link>
       <router-link to="/stats">📊 Voir les stats</router-link>
