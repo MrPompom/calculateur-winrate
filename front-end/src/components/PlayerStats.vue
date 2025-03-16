@@ -323,7 +323,7 @@ const getChampionImageUrl = (champion) => {
 
 // Gestion des erreurs d'image
 const handleImageError = (event) => {
-  event.target.src = new URL('../assets/default-champion.png', import.meta.url).href;
+  //event.target.src = new URL('../assets/default-champion.png', import.meta.url).href;
 };
 
 // Calculer le KDA pour affichage

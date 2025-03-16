@@ -162,15 +162,15 @@ const fetchGames = async () => {
 // Gestion des erreurs de chargement d'image
 const handleImageError = (event, type) => {
   if (type === 'champion') {
-    event.target.src = new URL('../assets/default-champion.png', import.meta.url).href;
+    //event.target.src = new URL('../assets/default-champion.png', import.meta.url).href;
   } else if (type === 'lane') {
-    event.target.src = new URL('../assets/default-lane.png', import.meta.url).href;
+    //event.target.src = new URL('../assets/default-lane.png', import.meta.url).href;
   }
 };
 
 // Fonction pour récupérer les icônes des champions avec gestion d'erreur
 const getChampionIcon = (champion) => {
-  if (!champion) return new URL('../assets/default-champion.png', import.meta.url).href;
+  if (!champion) return null;
   const formattedName = formatChampionImageName(champion);
   return `https://ddragon.leagueoflegends.com/cdn/15.5.1/img/champion/${formattedName}.png`;
 };
