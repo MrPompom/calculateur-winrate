@@ -1,18 +1,20 @@
+<!-- 1. Première modification: Importer la nouvelle fonction -->
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue';
-import { getAllPlayers, balanceTeams, balanceTeamsWithLanes } from '../services/api_service';
+import { getAllPlayers, balanceTeams, balanceTeamsWithLanes, balanceTeamsWithRiotRanks } from '../services/api_service';
 import { useToast } from 'vue-toastification';
 import { TransitionGroup } from 'vue';
 
 // Initialisation du système de notification
 const toast = useToast();
 
-  // États réactifs
+// États réactifs
 const playersList = ref([]);
 const selectedPlayers = ref([]);
 const teams = ref({ blue: [], red: [], metrics: null });
 const balanceTeamsOption = ref(true); // On active par défaut pour une meilleure UX
 const assignLanes = ref(true);        // On active par défaut pour une meilleure UX
+const useRiotRanks = ref(false);      // Nouvelle option pour l'équilibrage par rang Riot
 const isLoading = ref(false);
 const errorMessage = ref("");
 const expandedPlayers = ref({});
@@ -28,6 +30,20 @@ const lanes = [
   { value: 'mid', label: 'Mid', icon: 'mid.webp', description: 'Lane centrale, souvent des mages ou assassins' },
   { value: 'adc', label: 'ADC', icon: 'adc.png', description: 'Carry AD, dégâts physiques à distance' },
   { value: 'support', label: 'Support', icon: 'support.webp', description: 'Soutien protégeant l\'ADC et aidant l\'équipe' }
+];
+
+// Liste des tiers pour les rangs Riot avec leurs couleurs
+const rankTiers = [
+  { value: 'IRON', label: 'Fer', color: 'bg-gray-400 text-white' },
+  { value: 'BRONZE', label: 'Bronze', color: 'bg-amber-800 text-white' },
+  { value: 'SILVER', label: 'Argent', color: 'bg-gray-300 text-gray-800' },
+  { value: 'GOLD', label: 'Or', color: 'bg-yellow-500 text-white' },
+  { value: 'PLATINUM', label: 'Platine', color: 'bg-teal-400 text-white' },
+  { value: 'EMERALD', label: 'Émeraude', color: 'bg-emerald-500 text-white' },
+  { value: 'DIAMOND', label: 'Diamant', color: 'bg-blue-400 text-white' },
+  { value: 'MASTER', label: 'Maître', color: 'bg-purple-500 text-white' },
+  { value: 'GRANDMASTER', label: 'Grand Maître', color: 'bg-red-500 text-white' },
+  { value: 'CHALLENGER', label: 'Challenger', color: 'bg-cyan-500 text-white' }
 ];
 
 // Récupération des joueurs
@@ -144,7 +160,24 @@ const formatDate = (dateStr) => {
   return date.toLocaleString();
 };
 
-// Création des équipes
+// Fonction pour obtenir la classe de couleur pour un rang Riot
+const getRankTierClass = (tier) => {
+  if (!tier) return 'bg-gray-200 text-gray-600';
+  const rankTier = rankTiers.find(r => r.value === tier);
+  return rankTier ? rankTier.color : 'bg-gray-200 text-gray-600';
+};
+
+// Fonction pour formater un rang Riot pour l'affichage
+const formatRank = (rankInfo) => {
+  if (!rankInfo || !rankInfo.tier || !rankInfo.rank) return 'Non classé';
+  
+  const tier = rankTiers.find(r => r.value === rankInfo.tier);
+  const tierLabel = tier ? tier.label : rankInfo.tier;
+  
+  return `${tierLabel} ${rankInfo.rank}${rankInfo.lp !== undefined ? ` (${rankInfo.lp} LP)` : ''}`;
+};
+
+// 2. Modifier la fonction de création des équipes
 const createTeamsRequest = async () => {
   if (selectedPlayers.value.length !== 10) {
     toast.error('Veuillez sélectionner exactement 10 joueurs.');
@@ -157,16 +190,27 @@ const createTeamsRequest = async () => {
   try {
     let response;
     
-    if (balanceTeamsOption.value && assignLanes.value) {
-      response = await balanceTeamsWithLanes(selectedPlayers.value);
-      teams.value.blue = response?.blueTeam || [];
-      teams.value.red = response?.redTeam || [];
-      teams.value.metrics = response?.metrics || null;
-    } else if (balanceTeamsOption.value) {
-      response = await balanceTeams(selectedPlayers.value);
-      teams.value.blue = response?.blueTeam || [];
-      teams.value.red = response?.redTeam || [];
-      teams.value.metrics = response?.metrics || null;
+    // Ajouter le cas pour l'équilibrage par rang Riot
+    if (balanceTeamsOption.value) {
+      if (useRiotRanks.value) {
+        // Option de rang Riot a priorité
+        response = await balanceTeamsWithRiotRanks(selectedPlayers.value);
+        teams.value.blue = response?.blueTeam || [];
+        teams.value.red = response?.redTeam || [];
+        teams.value.metrics = response?.metrics || null;
+      } else if (assignLanes.value) {
+        // Ensuite option de lanes
+        response = await balanceTeamsWithLanes(selectedPlayers.value);
+        teams.value.blue = response?.blueTeam || [];
+        teams.value.red = response?.redTeam || [];
+        teams.value.metrics = response?.metrics || null;
+      } else {
+        // Enfin option de winrate de base
+        response = await balanceTeams(selectedPlayers.value);
+        teams.value.blue = response?.blueTeam || [];
+        teams.value.red = response?.redTeam || [];
+        teams.value.metrics = response?.metrics || null;
+      }
     } else {
       // Mode aléatoire
       const shuffledPlayers = [...selectedPlayers.value].sort(() => Math.random() - 0.5);
@@ -222,6 +266,14 @@ const resetSelection = () => {
     expandedPlayers.value = {};
   }
 };
+
+// Désactiver les options incompatibles
+watch(useRiotRanks, (newValue) => {
+  if (newValue) {
+    // Si on utilise les rangs Riot, on désactive l'assignation de lanes
+    assignLanes.value = false;
+  }
+});
 
 // Surveillance des rôles pour éviter les doublons
 watch(
@@ -313,8 +365,20 @@ onMounted(() => {
               class="cursor-pointer p-3 bg-white rounded-md shadow-sm hover:bg-gray-200 transition-colors flex justify-between items-center"
               :class="{ 'bg-blue-200 hover:bg-blue-300': isPlayerSelected(player._id) }"
             >
-              <span class="text-gray-800 font-medium">{{ player.name }}</span>
-              <span class="text-sm text-gray-500">{{ (player.winRate * 100).toFixed(2) }}% WR</span>
+              <div class="flex flex-col">
+                <span class="text-gray-800 font-medium">{{ player.name }}</span>
+                <div class="flex items-center gap-1">
+                  <span class="text-sm text-gray-500">{{ (player.winRate * 100).toFixed(2) }}% WR</span>
+                  <!-- Afficher le badge de rang si disponible -->
+                  <span 
+                    v-if="player.soloRank && player.soloRank.tier" 
+                    class="text-xs px-1.5 py-0.5 rounded ml-1"
+                    :class="getRankTierClass(player.soloRank.tier)"
+                  >
+                    {{ player.soloRank.tier }} {{ player.soloRank.rank }}
+                  </span>
+                </div>
+              </div>
             </li>
           </TransitionGroup>
 
@@ -389,18 +453,37 @@ onMounted(() => {
             </div>
           </TransitionGroup>
 
-          <!-- Options d'équilibrage -->
-          <div class="flex flex-col sm:flex-row sm:gap-6 justify-center mt-6 bg-gray-50 p-4 rounded-lg">
+          <!-- 3. Options d'équilibrage (ajouter l'option Riot Ranks) -->
+          <div class="flex flex-col gap-3 justify-center mt-6 bg-gray-50 p-4 rounded-lg">
             <label class="flex items-center gap-2 text-gray-700 mb-2 sm:mb-0">
-              <input type="checkbox" v-model="assignLanes" class="form-checkbox h-5 w-5 text-blue-600">
-              <span>Assigner les lanes</span>
-              <span class="text-gray-400 text-xs">(utilise les rôles choisis)</span>
-            </label>
-            <label class="flex items-center gap-2 text-gray-700">
               <input type="checkbox" v-model="balanceTeamsOption" class="form-checkbox h-5 w-5 text-green-600">
               <span>Équilibrer les équipes</span>
-              <span class="text-gray-400 text-xs">(par win rate)</span>
+              <span class="text-gray-400 text-xs">(au lieu de distribution aléatoire)</span>
             </label>
+            
+            <div class="pl-6 flex flex-col sm:flex-row sm:gap-6">
+              <label class="flex items-center gap-2 text-gray-700 mb-2 sm:mb-0" :class="{ 'opacity-50': !balanceTeamsOption }">
+                <input 
+                  type="checkbox" 
+                  v-model="assignLanes" 
+                  class="form-checkbox h-5 w-5 text-blue-600"
+                  :disabled="!balanceTeamsOption || useRiotRanks"
+                >
+                <span>Assigner les lanes</span>
+                <span class="text-gray-400 text-xs">(utilise les rôles choisis)</span>
+              </label>
+              
+              <label class="flex items-center gap-2 text-gray-700" :class="{ 'opacity-50': !balanceTeamsOption }">
+                <input 
+                  type="checkbox" 
+                  v-model="useRiotRanks" 
+                  class="form-checkbox h-5 w-5 text-purple-600"
+                  :disabled="!balanceTeamsOption"
+                >
+                <span>Utiliser les rangs Solo/Duo</span>
+                <span class="text-gray-400 text-xs">(nécessite comptes Riot liés)</span>
+              </label>
+            </div>
           </div>
 
           <!-- Boutons d'action -->
@@ -408,7 +491,7 @@ onMounted(() => {
             <button 
               @click="autoFillRoles" 
               class="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 transition-colors"
-              :disabled="selectedPlayers.length === 0"
+              :disabled="selectedPlayers.length === 0 || useRiotRanks"
             >
               Auto-assigner les rôles
             </button>
@@ -442,11 +525,12 @@ onMounted(() => {
       </div>
 
       <div v-else>
-        <!-- Statistiques d'équilibrage -->
+        <!-- 4. Statistiques d'équilibrage (ajouter le support pour les métriques de rang Riot) -->
         <div v-if="teams.metrics" class="mb-6 bg-gray-50 p-4 rounded-lg">
           <h3 class="text-lg font-semibold text-gray-700 mb-2">Statistiques d'équilibrage</h3>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="bg-white p-3 rounded shadow-sm">
+            <!-- Métriques standards -->
+            <div v-if="teams.metrics.blueTotalWinRate !== undefined" class="bg-white p-3 rounded shadow-sm">
               <p class="text-sm text-gray-600">Win Rate Global</p>
               <div class="flex justify-between mt-1">
                 <span class="font-medium text-blue-600">Équipe Bleue: {{ (teams.metrics.blueTotalWinRate * 100)?.toFixed(1) || '-' }}%</span>
@@ -459,13 +543,37 @@ onMounted(() => {
               </div>
             </div>
             
+            <!-- Métriques de MMR pour l'équilibrage par rang -->
+            <div v-if="teams.metrics.blueMMR !== undefined" class="bg-white p-3 rounded shadow-sm">
+              <p class="text-sm text-gray-600">MMR Estimé (Riot Rank)</p>
+              <div class="flex justify-between mt-1">
+                <span class="font-medium text-blue-600">Équipe Bleue: {{ Math.round(teams.metrics.blueMMR) }}</span>
+                <span class="font-medium text-red-600">Équipe Rouge: {{ Math.round(teams.metrics.redMMR) }}</span>
+              </div>
+              <div class="text-xs text-gray-500 mt-1">
+                Moyenne: 
+                <span class="text-blue-600">{{ Math.round(teams.metrics.blueAverageMMR) }}</span> / 
+                <span class="text-red-600">{{ Math.round(teams.metrics.redAverageMMR) }}</span>
+              </div>
+            </div>
+            
             <div class="bg-white p-3 rounded shadow-sm">
-              <p class="text-sm text-gray-600">Écart de Win Rate</p>
-              <p class="font-medium mt-1">{{ (teams.metrics.winRateDifference * 100)?.toFixed(1) || '-' }}%</p>
+              <p class="text-sm text-gray-600">
+                {{ teams.metrics.mmrDifference !== undefined ? 'Écart de MMR' : 'Écart de Win Rate' }}
+              </p>
+              <p class="font-medium mt-1">
+                {{ teams.metrics.mmrDifference !== undefined ? 
+                   Math.round(teams.metrics.mmrDifference) : 
+                   (teams.metrics.winRateDifference * 100)?.toFixed(1) + '%' }}
+              </p>
               <div class="w-full bg-gray-200 rounded-full h-2 mt-1">
                 <div 
                   class="bg-green-600 h-2 rounded-full" 
-                  :style="{width: `${Math.min(100, 100 - teams.metrics.winRateDifference * 20 * 100)}%`}"
+                  :style="{
+                    width: teams.metrics.mmrDifference !== undefined ? 
+                      `${Math.min(100, 100 - (teams.metrics.mmrDifference / 5))}%` : 
+                      `${Math.min(100, 100 - teams.metrics.winRateDifference * 20 * 100)}%`
+                  }"
                 ></div>
               </div>
               <div class="text-xs text-gray-500 mt-1">Plus l'écart est faible, meilleur est l'équilibrage</div>
@@ -486,11 +594,38 @@ onMounted(() => {
                 ></div>
               </div>
             </div>
+            
+            <!-- Rangs les plus élevés -->
+            <div v-if="teams.metrics.blueHighestRank || teams.metrics.redHighestRank" class="bg-white p-3 rounded shadow-sm">
+              <p class="text-sm text-gray-600">Rang le plus élevé</p>
+              <div class="flex justify-between mt-1">
+                <div>
+                  <span 
+                    v-if="teams.metrics.blueHighestRank" 
+                    class="px-1.5 py-0.5 rounded text-xs"
+                    :class="getRankTierClass(teams.metrics.blueHighestRank.tier)"
+                  >
+                    Bleu: {{ teams.metrics.blueHighestRank.tier }} {{ teams.metrics.blueHighestRank.rank }}
+                  </span>
+                  <span v-else>Bleu: Non classé</span>
+                </div>
+                <div>
+                  <span 
+                    v-if="teams.metrics.redHighestRank" 
+                    class="px-1.5 py-0.5 rounded text-xs"
+                    :class="getRankTierClass(teams.metrics.redHighestRank.tier)"
+                  >
+                    Rouge: {{ teams.metrics.redHighestRank.tier }} {{ teams.metrics.redHighestRank.rank }}
+                  </span>
+                  <span v-else>Rouge: Non classé</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <!-- Équipe Bleue -->
+          <!-- 5. Équipe Bleue (mise à jour pour afficher les rangs Riot) -->
           <div class="bg-blue-50 p-4 rounded-lg shadow-md">
             <h3 class="text-xl font-semibold text-blue-700 mb-4">Équipe Bleue</h3>
             <TransitionGroup name="list" tag="ul" class="space-y-2">
@@ -499,11 +634,21 @@ onMounted(() => {
                   <div class="flex items-center gap-1">
                     <span class="text-gray-800 font-medium">{{ player.name }}</span>
                     <span v-if="player.roleMatch" class="text-xs px-1 py-0.5 bg-gray-100 rounded text-gray-600">{{ player.roleMatch }}</span>
+                    <span 
+                      v-if="player.rankInfo" 
+                      class="text-xs px-1.5 py-0.5 rounded ml-1"
+                      :class="getRankTierClass(player.rankInfo.tier)"
+                    >
+                      {{ formatRank(player.rankInfo) }}
+                    </span>
                   </div>
                   <span class="text-sm text-gray-600">
                     {{ (player.winRate * 100).toFixed(2) }}% WR global
                     <span v-if="assignLanes && player.lane">
                       | {{ (player.laneWinRate * 100).toFixed(2) }}% WR {{ player.lane }}
+                    </span>
+                    <span v-if="player.mmr">
+                      | MMR: {{ Math.round(player.mmr) }}
                     </span>
                   </span>
                 </div>
@@ -521,11 +666,21 @@ onMounted(() => {
                   <div class="flex items-center gap-1">
                     <span class="text-gray-800 font-medium">{{ player.name }}</span>
                     <span v-if="player.roleMatch" class="text-xs px-1 py-0.5 bg-gray-100 rounded text-gray-600">{{ player.roleMatch }}</span>
+                    <span 
+                      v-if="player.rankInfo" 
+                      class="text-xs px-1.5 py-0.5 rounded ml-1"
+                      :class="getRankTierClass(player.rankInfo.tier)"
+                    >
+                      {{ formatRank(player.rankInfo) }}
+                    </span>
                   </div>
                   <span class="text-sm text-gray-600">
                     {{ (player.winRate * 100).toFixed(2) }}% WR global
                     <span v-if="assignLanes && player.lane">
                       | {{ (player.laneWinRate * 100).toFixed(2) }}% WR {{ player.lane }}
+                    </span>
+                    <span v-if="player.mmr">
+                      | MMR: {{ Math.round(player.mmr) }}
                     </span>
                   </span>
                 </div>
@@ -552,8 +707,6 @@ onMounted(() => {
         </div>
       </div>
     </div>
-
-
   </div>
 </template>
 

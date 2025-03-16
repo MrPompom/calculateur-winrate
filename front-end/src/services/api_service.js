@@ -89,6 +89,22 @@ export const balanceTeamsWithLanes = async (players) => {
   }
 };
 
+export const balanceTeamsWithRiotRanks = async (players) => {
+  try {
+    console.log("Équilibrage des équipes avec rangs Riot:", players);
+    const response = await axios.post(`${API_URL}/teams/riot-ranks`, { players });
+    return response.data;
+  } catch (error) {
+    console.error("Erreur lors de l'équilibrage des équipes avec rangs Riot:", error);
+    // Afficher un message plus détaillé de l'erreur si disponible
+    if (error.response && error.response.data) {
+      console.error("Détails de l'erreur:", error.response.data);
+    }
+    return null;
+  };
+}
+
+
 /**
  * Met à jour un joueur existant
  * @param {Object} playerData - Données du joueur à mettre à jour

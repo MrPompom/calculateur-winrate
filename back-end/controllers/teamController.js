@@ -904,6 +904,401 @@ export const balanceTeamsWithLanes = async (req, res) => {
     }
 };
 
+// 🔹 Fonction pour équilibrer les équipes en utilisant les rangs Solo/Duo de Riot
+export const balanceTeamsWithRiotRanks = async (req, res) => {
+    try {
+      const { players } = req.body;
+      const DEBUG = process.env.DEBUG_TEAM_BALANCE === 'true';
+  
+      // Validation de l'entrée
+      if (!Array.isArray(players)) {
+        return res.status(400).json({ error: "Format de données invalide. Un tableau de joueurs est attendu." });
+      }
+  
+      if (players.length !== 10) {
+        return res.status(400).json({ 
+          error: `Il doit y avoir exactement 10 joueurs. Reçu : ${players.length}` 
+        });
+      }
+  
+      // Récupérer les joueurs en base de données avec leurs informations Riot
+      const playerData = await Player.find(
+        { _id: { $in: players.map(p => p.id) } }, 
+        "_id name winRate riotId riotTag soloRank region summonerLevel"
+      );
+  
+      if (playerData.length !== 10) {
+        return res.status(400).json({ 
+          error: `Certains joueurs n'ont pas été trouvés. Attendu : 10, Trouvé : ${playerData.length}` 
+        });
+      }
+  
+      if (DEBUG) console.log("Création d'équipes équilibrées basées sur les rangs Riot...");
+  
+      // Filtrer les joueurs qui ont des données de rang Riot
+      const playersWithRank = playerData.filter(player => 
+        player.soloRank && player.soloRank.tier && player.soloRank.rank
+      );
+  
+      const playersWithoutRank = playerData.filter(player => 
+        !player.soloRank || !player.soloRank.tier || !player.soloRank.rank
+      );
+  
+      if (DEBUG) {
+        console.log(`Joueurs avec rang Riot: ${playersWithRank.length}`);
+        console.log(`Joueurs sans rang Riot: ${playersWithoutRank.length}`);
+      }
+  
+      // Calculer le MMR estimé pour chaque joueur
+      const processedPlayers = playerData.map(player => {
+        const mmr = calculateMMR(player.soloRank);
+        return {
+          id: player._id,
+          name: player.name,
+          winRate: player.winRate || 0,
+          riotId: player.riotId,
+          riotTag: player.riotTag,
+          region: player.region,
+          soloRank: player.soloRank,
+          hasRank: Boolean(player.soloRank && player.soloRank.tier),
+          mmr,
+          rankValue: getRankValue(player.soloRank)
+        };
+      });
+  
+      // Trier par MMR décroissant
+      processedPlayers.sort((a, b) => b.mmr - a.mmr);
+  
+      if (DEBUG) {
+        console.log("Joueurs triés par MMR estimé:");
+        processedPlayers.forEach(p => {
+          const rankStr = p.soloRank ? `${p.soloRank.tier} ${p.soloRank.rank} (${p.soloRank.leaguePoints} LP)` : "Unranked";
+          console.log(`${p.name}: ${rankStr} - MMR: ${p.mmr}`);
+        });
+      }
+  
+      // Distribution par la méthode Snake Draft (1->2->2->1) pour un meilleur équilibre
+      let blueTeam = [];
+      let redTeam = [];
+      let blueTotalMMR = 0;
+      let redTotalMMR = 0;
+      
+      // Attribution alternative pour un meilleur équilibre (meilleur joueur dans une équipe, 2ème dans l'autre, etc.)
+      processedPlayers.forEach((player, index) => {
+        const playerObj = {
+          id: player.id,
+          name: player.name,
+          winRate: player.winRate,
+          mmr: player.mmr,
+          rankInfo: player.soloRank ? {
+            tier: player.soloRank.tier,
+            rank: player.soloRank.rank,
+            lp: player.soloRank.leaguePoints,
+            rankString: `${player.soloRank.tier} ${player.soloRank.rank}`,
+            wins: player.soloRank.wins,
+            losses: player.soloRank.losses
+          } : { rankString: "Unranked" }
+        };
+  
+        // Utiliser l'index pour déterminer l'équipe (0, 3, 4, 7, 8 -> Bleu, 1, 2, 5, 6, 9 -> Rouge)
+        if ([0, 3, 4, 7, 8].includes(index)) {
+          blueTeam.push(playerObj);
+          blueTotalMMR += player.mmr;
+        } else {
+          redTeam.push(playerObj);
+          redTotalMMR += player.mmr;
+        }
+      });
+  
+      // Pré-équilibrage - vérifier si l'écart est trop important et échanger des joueurs si nécessaire
+      if (Math.abs(blueTotalMMR - redTotalMMR) > 300) {
+        const iterations = 10; // Nombre maximal d'essais pour équilibrer
+        balanceTeamsByExchange(blueTeam, redTeam, iterations);
+      }
+  
+      // Recalculer les MMR totaux après équilibrage
+      blueTotalMMR = blueTeam.reduce((sum, player) => sum + player.mmr, 0);
+      redTotalMMR = redTeam.reduce((sum, player) => sum + player.mmr, 0);
+  
+      // Calculer les métriques de l'équilibrage
+      const metrics = calculateRiotRankMetrics(blueTeam, redTeam);
+  
+      if (DEBUG) {
+        console.log("Équipes équilibrées par rang Riot:");
+        console.log(`Équipe bleue (MMR: ${metrics.blueMMR}): ${blueTeam.map(p => `${p.name} (${p.rankInfo.rankString || "Unranked"})`).join(', ')}`);
+        console.log(`Équipe rouge (MMR: ${metrics.redMMR}): ${redTeam.map(p => `${p.name} (${p.rankInfo.rankString || "Unranked"})`).join(', ')}`);
+        console.log(`Différence de MMR: ${metrics.mmrDifference}`);
+        console.log(`Qualité d'équilibrage: ${metrics.balanceQuality}/100`);
+      }
+  
+      // Retourner les équipes et les métriques
+      res.status(200).json({ 
+        blueTeam, 
+        redTeam,
+        metrics: metrics
+      });
+    } catch (error) {
+      console.error("Erreur lors de la création des équipes équilibrées par rang Riot:", error);
+      res.status(500).json({ error: "Erreur interne lors de la création des équipes équilibrées." });
+    }
+  };
+  
+  /**
+   * Équilibre les équipes en échangeant des joueurs pour minimiser la différence de MMR
+   */
+  function balanceTeamsByExchange(blueTeam, redTeam, maxIterations = 10) {
+    let iterations = 0;
+    let blueTotalMMR = blueTeam.reduce((sum, player) => sum + player.mmr, 0);
+    let redTotalMMR = redTeam.reduce((sum, player) => sum + player.mmr, 0);
+    
+    // Continuer tant que l'écart est important et qu'on n'a pas atteint le nombre max d'itérations
+    while (Math.abs(blueTotalMMR - redTotalMMR) > 100 && iterations < maxIterations) {
+      iterations++;
+      
+      // Déterminer quelle équipe a le MMR le plus élevé
+      const isBlueStronger = blueTotalMMR > redTotalMMR;
+      
+      // Trouver le meilleur échange pour équilibrer
+      let bestExchange = null;
+      let bestDifference = Math.abs(blueTotalMMR - redTotalMMR);
+      
+      // Pour chaque paire possible de joueurs
+      for (let i = 0; i < blueTeam.length; i++) {
+        for (let j = 0; j < redTeam.length; j++) {
+          // Calculer l'impact de l'échange sur le MMR
+          const bluePlayerMMR = blueTeam[i].mmr;
+          const redPlayerMMR = redTeam[j].mmr;
+          
+          // Nouveau MMR après échange
+          const newBlueTotalMMR = blueTotalMMR - bluePlayerMMR + redPlayerMMR;
+          const newRedTotalMMR = redTotalMMR - redPlayerMMR + bluePlayerMMR;
+          
+          // Calculer la nouvelle différence
+          const newDifference = Math.abs(newBlueTotalMMR - newRedTotalMMR);
+          
+          // Vérifier si cet échange améliore l'équilibre
+          if (newDifference < bestDifference) {
+            bestDifference = newDifference;
+            bestExchange = { blueIndex: i, redIndex: j };
+          }
+        }
+      }
+      
+      // Si on a trouvé un meilleur échange, l'effectuer
+      if (bestExchange) {
+        const tempPlayer = blueTeam[bestExchange.blueIndex];
+        blueTeam[bestExchange.blueIndex] = redTeam[bestExchange.redIndex];
+        redTeam[bestExchange.redIndex] = tempPlayer;
+        
+        // Mettre à jour les MMR
+        blueTotalMMR = blueTeam.reduce((sum, player) => sum + player.mmr, 0);
+        redTotalMMR = redTeam.reduce((sum, player) => sum + player.mmr, 0);
+      } else {
+        // Si aucun échange n'améliore la situation, sortir de la boucle
+        break;
+      }
+    }
+    
+    return { blueTeam, redTeam };
+  }
+  
+  /**
+   * Calcule les métriques basées sur les rangs Riot pour l'équilibrage
+   */
+  function calculateRiotRankMetrics(blueTeam, redTeam) {
+    // Calculer MMR total et moyen
+    const blueMMR = blueTeam.reduce((sum, player) => sum + player.mmr, 0);
+    const redMMR = redTeam.reduce((sum, player) => sum + player.mmr, 0);
+    const blueAverageMMR = blueMMR / blueTeam.length;
+    const redAverageMMR = redMMR / redTeam.length;
+    const mmrDifference = Math.abs(blueMMR - redMMR);
+    const averageMMRDifference = Math.abs(blueAverageMMR - redAverageMMR);
+    
+    // Compter les joueurs par tier pour chaque équipe
+    const tierCounts = {
+      blue: countPlayersByTier(blueTeam),
+      red: countPlayersByTier(redTeam)
+    };
+    
+    // Identifier le rang le plus élevé dans chaque équipe
+    const blueHighestRank = findHighestRank(blueTeam);
+    const redHighestRank = findHighestRank(redTeam);
+    
+    // Calculer le winrate Riot (basé sur les victoires/défaites en ranked)
+    const blueRankedWins = blueTeam.reduce((sum, player) => 
+      sum + (player.rankInfo.wins || 0), 0);
+    const blueRankedLosses = blueTeam.reduce((sum, player) => 
+      sum + (player.rankInfo.losses || 0), 0);
+    const redRankedWins = redTeam.reduce((sum, player) => 
+      sum + (player.rankInfo.wins || 0), 0);
+    const redRankedLosses = redTeam.reduce((sum, player) => 
+      sum + (player.rankInfo.losses || 0), 0);
+    
+    // Winrate en pourcentage (éviter division par zéro)
+    const blueRankedWinrate = blueRankedWins + blueRankedLosses > 0 ? 
+      (blueRankedWins / (blueRankedWins + blueRankedLosses)) : 0;
+    const redRankedWinrate = redRankedWins + redRankedLosses > 0 ? 
+      (redRankedWins / (redRankedWins + redRankedLosses)) : 0;
+    
+    // Calculer score de qualité d'équilibrage (100 = parfait)
+    // Plus la différence de MMR est faible, meilleur est le score
+    const mmrBalanceQuality = Math.max(0, 100 - (mmrDifference / 10));
+    
+    return {
+      blueMMR,
+      redMMR,
+      blueAverageMMR,
+      redAverageMMR,
+      mmrDifference,
+      averageMMRDifference,
+      tierDistribution: tierCounts,
+      blueHighestRank,
+      redHighestRank,
+      blueRankedStats: {
+        wins: blueRankedWins,
+        losses: blueRankedLosses,
+        winrate: blueRankedWinrate
+      },
+      redRankedStats: {
+        wins: redRankedWins,
+        losses: redRankedLosses,
+        winrate: redRankedWinrate
+      },
+      balanceQuality: mmrBalanceQuality
+    };
+  }
+  
+  /**
+   * Compte les joueurs par tier (IRON, BRONZE, etc.) dans une équipe
+   */
+  function countPlayersByTier(team) {
+    const tiers = ["IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "DIAMOND", "MASTER", "GRANDMASTER", "CHALLENGER"];
+    const counts = {};
+    
+    tiers.forEach(tier => counts[tier] = 0);
+    counts["UNRANKED"] = 0;
+    
+    team.forEach(player => {
+      if (player.rankInfo && player.rankInfo.tier) {
+        counts[player.rankInfo.tier]++;
+      } else {
+        counts["UNRANKED"]++;
+      }
+    });
+    
+    return counts;
+  }
+  
+  /**
+   * Trouve le rang le plus élevé dans une équipe
+   */
+  function findHighestRank(team) {
+    let highestRank = null;
+    let highestRankValue = -1;
+    
+    team.forEach(player => {
+      if (player.rankInfo && player.rankInfo.tier) {
+        const rankValue = getRankValue({
+          tier: player.rankInfo.tier,
+          rank: player.rankInfo.rank
+        });
+        
+        if (rankValue > highestRankValue) {
+          highestRankValue = rankValue;
+          highestRank = {
+            tier: player.rankInfo.tier,
+            rank: player.rankInfo.rank,
+            player: player.name
+          };
+        }
+      }
+    });
+    
+    return highestRank || { tier: "UNRANKED", rank: "", player: "" };
+  }
+  
+  /**
+   * Convertit un rang League of Legends en valeur MMR estimée
+   */
+  function calculateMMR(soloRank) {
+    if (!soloRank || !soloRank.tier || !soloRank.rank) {
+      return 800; // Valeur par défaut (environ Silver IV)
+    }
+  
+    const baseMMR = getRankBaseMMR(soloRank.tier);
+    const divisionModifier = getDivisionModifier(soloRank.rank);
+    const lpModifier = (soloRank.leaguePoints || 0) / 100 * 100; // 0-100 LP = 0-100 MMR
+    
+    return baseMMR + divisionModifier + lpModifier;
+  }
+  
+  /**
+   * Obtient la valeur de base du MMR pour un tier
+   */
+  function getRankBaseMMR(tier) {
+    const tierValues = {
+      "IRON": 0,
+      "BRONZE": 400,
+      "SILVER": 800,
+      "GOLD": 1200,
+      "PLATINUM": 1600,
+      "EMERALD": 2000,
+      "DIAMOND": 2400,
+      "MASTER": 2800,
+      "GRANDMASTER": 3100,
+      "CHALLENGER": 3400
+    };
+    
+    return tierValues[tier] || 800;
+  }
+  
+  /**
+   * Obtient le modificateur de MMR basé sur la division
+   */
+  function getDivisionModifier(division) {
+    const divisionValues = {
+      "IV": 0,
+      "III": 75,
+      "II": 150,
+      "I": 225
+    };
+    
+    return divisionValues[division] || 0;
+  }
+  
+  /**
+   * Obtient une valeur numérique pour un rang (pour comparaison)
+   */
+  function getRankValue(rankObj) {
+    if (!rankObj || !rankObj.tier || !rankObj.rank) {
+      return 0; // Valeur pour non classé
+    }
+    
+    const tierValues = {
+      "IRON": 0,
+      "BRONZE": 4,
+      "SILVER": 8,
+      "GOLD": 12,
+      "PLATINUM": 16,
+      "EMERALD": 20,
+      "DIAMOND": 24,
+      "MASTER": 28,
+      "GRANDMASTER": 29,
+      "CHALLENGER": 30
+    };
+    
+    const divisionValues = {
+      "IV": 0,
+      "III": 1,
+      "II": 2,
+      "I": 3
+    };
+    
+    const tierValue = tierValues[rankObj.tier] || 0;
+    const divisionValue = divisionValues[rankObj.rank] || 0;
+    
+    return tierValue + divisionValue;
+  }
 
 
 

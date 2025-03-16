@@ -21,6 +21,7 @@ const sortOption = ref("winRate"); // Options: "name", "winRate", "gamesPlayed"
 const sortDirection = ref("desc"); // "asc" ou "desc"
 const selectedTab = ref("overview"); // "overview", "lanes", "champions", "history"
 const championsFilter = ref("");
+const isRiotSyncing = ref(false);
 
 // États pour l'édition des joueurs
 const isEditModalOpen = ref(false);
@@ -128,6 +129,7 @@ const fetchPlayerStats = async (player) => {
 
   try {
     playerStats.value = await getPlayerStats(player.name);
+    
     
     // Sélectionner l'onglet "overview" par défaut
     selectedTab.value = "overview";
@@ -382,6 +384,50 @@ const formatMasteryPoints = (points) => {
 const calculateMasteryPercentage = (points) => {
   const maxPoints = 1500000; // ~1.5M as a reasonable maximum
   return Math.min(100, (points / maxPoints) * 100);
+};
+// Fonction pour rafraîchir les données Riot
+const refreshRiotData = async (playerData) => {
+  if (!playerData || !playerData.riotId || isRiotSyncing.value) return;
+  
+  isRiotSyncing.value = true;
+  try {
+    // Afficher une notification toast pour indiquer la synchronisation
+    const syncToast = toast.info("Synchronisation des données Riot en cours...", {
+      timeout: false,
+      closeButton: false
+    });
+    
+    // Appeler l'API pour synchroniser les données
+    const result = await syncPlayerWithRiot({ 
+      id: playerData._id,
+      name: playerData.name,
+      riotId: playerData.riotId,
+      riotTag: playerData.riotTag,
+      region: playerData.region || "EUW" // Région par défaut si non définie
+    });
+    
+    // Fermer la notification toast
+    toast.dismiss(syncToast);
+    
+    if (result.success) {
+      // Rafraîchir les données après synchronisation
+      playerStats.value = await getPlayerStats(playerData.name);
+      toast.success("Données Riot synchronisées avec succès!");
+      
+      // Si l'onglet Riot est sélectionné, rester dessus
+      if (selectedTab.value !== 'riotAccount') {
+        // Sinon, charger l'onglet Aperçu par défaut
+        selectedTab.value = 'overview';
+      }
+    } else {
+      toast.error(result.message || "Échec de la synchronisation avec Riot Games");
+    }
+  } catch (error) {
+    console.error("Erreur lors de la synchronisation Riot:", error);
+    toast.error("Erreur lors de la synchronisation avec Riot Games");
+  } finally {
+    isRiotSyncing.value = false;
+  }
 };
 
 onMounted(fetchPlayers);
@@ -752,7 +798,20 @@ onMounted(fetchPlayers);
         <div v-if="selectedTab === 'riotAccount'" class="space-y-6">
                       <div v-if="playerStats.riotAccountId" class="bg-gray-50 p-4 rounded-lg shadow-sm">
                         <h3 class="text-lg font-semibold text-gray-800 mb-4">Informations du compte Riot</h3>
-                        
+                        <button 
+                          @click="refreshRiotData(playerStats)"
+                          class="px-3 py-1 bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition flex items-center gap-1 text-sm"
+                          :disabled="isRiotSyncing"
+                        >
+                          <svg v-if="isRiotSyncing" class="animate-spin h-4 w-4 text-blue-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          <span>{{ isRiotSyncing ? 'Synchronisation...' : 'Actualiser' }}</span>
+                        </button>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <!-- Basic Riot Account Info -->
                           <div class="bg-white p-4 rounded shadow-sm">
