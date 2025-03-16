@@ -57,21 +57,6 @@ export const getAllGames = async () => {
   }
 };
 
-// ⚖️ Créer des équipes équilibrées ou aléatoires
-export const createTeams = async (players, assignLanes, balanceTeams) => {
-  try {
-    const response = await axios.post(`${API_URL}/teams/create`, {  // Changement de route pour être plus cohérent
-      players,  
-      assignLanes,
-      balanceTeams
-    });
-    return response.data;
-  } catch (error) {
-    console.error("❌ Erreur lors de la création des équipes:", error);
-    return null;
-  }
-};
-
 // 🔄 Recalculer les statistiques des joueurs
 export const recalculateStats = async () => {
   try {
@@ -82,3 +67,25 @@ export const recalculateStats = async () => {
     throw error;
   }
 };
+
+export const balanceTeams = async (players) => {
+  try {
+    const response = await axios.post(`${API_URL}/teams/balance`, { players });
+    return response.data;
+  } catch (error) {
+    console.error("Erreur lors de l'équilibrage des équipes :", error);
+    return null;
+  }
+};
+
+export const balanceTeamsWithLanes = async (players) => {
+  try {
+    console.log(players);
+    const response = await axios.post(`${API_URL}/teams/balancelanes`, { players });
+    return response.data;
+  } catch (error) {
+    console.error("Erreur lors de l'équilibrage des équipes avec lanes :", error);
+    return null;
+  }
+};
+

@@ -5,6 +5,7 @@ import dotenv from "dotenv";
 
 import gameRoutes from "./routes/gameRoutes.js";
 import playerRoutes from "./routes/playerRoutes.js";
+import teamRoutes from './routes/teamRoutes.js';
 
 dotenv.config();
 const app = express();
@@ -23,6 +24,7 @@ mongoose.connect(process.env.MONGO_URI, { useNewUrlParser: true, useUnifiedTopol
 
 app.use("/games", gameRoutes);
 app.use("/players", playerRoutes);
+app.use('/teams', teamRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`🚀 Serveur lancé sur le port ${PORT}`));

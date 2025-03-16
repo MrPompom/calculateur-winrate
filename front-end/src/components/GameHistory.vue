@@ -9,14 +9,13 @@ const expandedGames = ref({});
 const formatChampionImageName = (champ) => {
   return champ
     .replace(/Wukong/i, 'MonkeyKing') // Remplace Wukong par MonkeyKing
-    .replace(/K'Sante/i, 'KSante') // Remplace K'Sante par KSante
+    .replace(/Vel'Koz/i, 'Velkoz') // Remplace Wukong par MonkeyKing
+    .replace(/Cho'Gath/i, 'Chogath') // Remplace Wukong par MonkeyKing
     .replace(/\s+/g, '')   // Supprime les espaces
     .replace(/_/g, '')     // Supprime les underscores
-    .replace(/\./g, '')    // Supprime les points
-    .replace(/'./g, match => match[1].toLowerCase()) // Assure que la lettre après ' est minuscule
+    .replace(/'./g, match => match.toUpperCase()) // Transforme la lettre après ' en majuscule
     .replace(/'/g, ''); // Supprime les apostrophes après modification
 };
-
 
 
 // Récupération des games
@@ -33,7 +32,6 @@ const fetchGames = async () => {
 
 // Fonction pour récupérer les icônes des champions
 const getChampionIcon = (champion) => {
-  console.log(champion, formatChampionImageName(champion))
   return `https://ddragon.leagueoflegends.com/cdn/15.5.1/img/champion/${formatChampionImageName(champion)}.png`;
 };
 
