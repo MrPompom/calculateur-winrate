@@ -1227,7 +1227,7 @@ export const balanceTeamsWithRiotRanks = async (req, res) => {
   
     const baseMMR = getRankBaseMMR(soloRank.tier);
     const divisionModifier = getDivisionModifier(soloRank.rank);
-    const lpModifier = (soloRank.leaguePoints || 0) / 100 * 100; // 0-100 LP = 0-100 MMR
+    const lpModifier = soloRank.leaguePoints || 0; // Correction: utiliser LP directement
     
     return baseMMR + divisionModifier + lpModifier;
   }
@@ -1249,7 +1249,8 @@ export const balanceTeamsWithRiotRanks = async (req, res) => {
       "CHALLENGER": 3400
     };
     
-    return tierValues[tier] || 800;
+    // Vérification stricte
+    return tierValues[tier] !== undefined ? tierValues[tier] : 800;
   }
   
   /**
@@ -1263,7 +1264,7 @@ export const balanceTeamsWithRiotRanks = async (req, res) => {
       "I": 225
     };
     
-    return divisionValues[division] || 0;
+    return divisionValues[division] !== undefined ? divisionValues[division] : 0;
   }
   
   /**
