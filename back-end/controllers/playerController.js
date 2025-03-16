@@ -2,13 +2,17 @@ import Player from "../models/Player.js";
 import Game from "../models/Game.js";
 
 export const getAllPlayers = async (req, res) => {
-  try {
-    const players = await Player.find();
-    res.status(200).json(players);
-  } catch (error) {
-    res.status(500).json({ error: "Erreur lors de la récupération des joueurs" });
-  }
-};
+    try {
+      // Exclure les champs statsByLane et statsByChampion en utilisant `select`
+      const players = await Player.find().select('-statsByLane -statsByChampion');
+  
+      res.status(200).json(players);
+    } catch (error) {
+      console.error("❌ Erreur lors de la récupération des joueurs :", error);
+      res.status(500).json({ error: "Erreur lors de la récupération des joueurs" });
+    }
+  };
+  
 
 export const getPlayerStats = async (req, res) => {
     try {
