@@ -1,9 +1,12 @@
-<!-- 1. Première modification: Importer la nouvelle fonction -->
 <script setup>
 import { ref, onMounted, watch, computed } from 'vue';
 import { getAllPlayers, balanceTeams, balanceTeamsWithLanes, balanceTeamsWithRiotRanks } from '../services/api_service';
 import { useToast } from 'vue-toastification';
 import { TransitionGroup } from 'vue';
+import { useRouter } from 'vue-router'; // Importer le router
+
+// Initialisation du router
+const router = useRouter();
 
 // Initialisation du système de notification
 const toast = useToast();
@@ -287,6 +290,45 @@ watch(
   },
   { deep: true }
 );
+
+// Nouvelle fonction pour enregistrer la partie
+const goToCreateGame = () => {
+  if (!teams.value.blue.length || !teams.value.red.length) {
+    toast.error('Aucune équipe générée. Veuillez d\'abord générer des équipes.');
+    return;
+  }
+  
+  // Préparer les données pour le formulaire d'ajout de partie
+  const gameTeams = {
+    blueTeam: teams.value.blue.map(player => ({
+      player: player.name,
+      champion: '',  // Champs à remplir manuellement
+      kills: 0,      // Valeurs par défaut
+      deaths: 0,
+      assists: 0,
+      lane: player.lane || '',
+      won: false     // Sera défini lors de l'ajout de la partie
+    })),
+    redTeam: teams.value.red.map(player => ({
+      player: player.name,
+      champion: '',  // Champs à remplir manuellement
+      kills: 0,      // Valeurs par défaut
+      deaths: 0,
+      assists: 0,
+      lane: player.lane || '',
+      won: false     // Sera défini lors de l'ajout de la partie
+    })),
+    winningTeam: ''  // À déterminer dans le formulaire d'ajout
+  };
+  
+  // Stocker les données dans localStorage pour les récupérer dans l'autre composant
+  localStorage.setItem('prefilledGameData', JSON.stringify(gameTeams));
+  
+  // Rediriger vers la page d'ajout de partie
+  router.push('/');
+  
+  toast.info('Données d\'équipes transférées vers le formulaire d\'ajout de partie');
+};
 
 onMounted(() => {
   fetchPlayers();
@@ -703,6 +745,14 @@ onMounted(() => {
           >
             <span v-if="isLoading" class="inline-block w-4 h-4 border-2 border-t-transparent border-white rounded-full animate-spin"></span>
             <span>{{ isLoading ? "Génération..." : "Régénérer" }}</span>
+          </button>
+          
+          <!-- Nouveau bouton pour enregistrer la partie -->
+          <button 
+            @click="goToCreateGame" 
+            class="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors flex items-center gap-2"
+          >
+            <span>Enregistrer la partie</span>
           </button>
         </div>
       </div>

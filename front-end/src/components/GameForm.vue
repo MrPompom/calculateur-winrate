@@ -317,6 +317,36 @@ const handleWheel = (event, player, field, increment) => {
   player[field] = newValue;
 };
 
+// Nouvelle fonction pour charger les données pré-remplies
+const loadPrefilledData = () => {
+  try {
+    const prefilledData = localStorage.getItem('prefilledGameData');
+    if (prefilledData) {
+      const parsedData = JSON.parse(prefilledData);
+      
+      // Mise à jour des équipes avec les données pré-remplies
+      if (parsedData.blueTeam && parsedData.blueTeam.length === 5) {
+        gameData.blueTeam = parsedData.blueTeam;
+      }
+      
+      if (parsedData.redTeam && parsedData.redTeam.length === 5) {
+        gameData.redTeam = parsedData.redTeam;
+      }
+      
+      if (parsedData.winningTeam) {
+        gameData.winningTeam = parsedData.winningTeam;
+      }
+      
+      // Supprimer les données du localStorage après utilisation
+      localStorage.removeItem('prefilledGameData');
+      
+      toast.success('Les équipes ont été chargées avec succès!');
+    }
+  } catch (error) {
+    console.error('Erreur lors du chargement des données pré-remplies:', error);
+  }
+};
+
 // Observer les changements pour la validation en temps réel
 watch(allPlayers, () => {
   checkDuplicatePlayers();
@@ -326,6 +356,8 @@ watch(allPlayers, () => {
 onMounted(() => {
   fetchPlayers();
   loadChampions();
+  // Charger les données pré-remplies si disponibles
+  loadPrefilledData();
 });
 </script>
 
