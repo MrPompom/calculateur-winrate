@@ -5,7 +5,8 @@ import {
     createPlayer, 
     recalculateStats,
     updatePlayer,          // Nouvelle route
-    syncPlayerWithRiot     // Nouvelle route
+    syncPlayerWithRiot,     // Nouvelle route
+    refreshRiotPlayerStats
   } from '../controllers/playerController.js';
 
 const router = express.Router();
@@ -18,5 +19,6 @@ router.post("/recalculate", recalculateStats); // 🔄 Route pour recalculer les
 // Nouvelles routes
 router.put('/:id', updatePlayer);
 router.post('/:id/sync-riot', syncPlayerWithRiot);
+router.post('/:id/refresh-riot', refreshRiotPlayerStats);
 
 export default router;
