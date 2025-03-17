@@ -2,195 +2,334 @@ import Player from '../models/Player.js';
 
 // 🔹 Fonction pour équilibrer les équipes sans assignation des lanes
 export const balanceTeams = async (req, res) => {
-    try {
-      const { players } = req.body;
-      const DEBUG = process.env.DEBUG_TEAM_BALANCE === 'true';
-  
-      // Validation de l'entrée
-      if (!Array.isArray(players)) {
-        return res.status(400).json({ error: "Format de données invalide. Un tableau de joueurs est attendu." });
-      }
-  
-      if (players.length !== 10) {
-        return res.status(400).json({ 
-          error: `Il doit y avoir exactement 10 joueurs. Reçu : ${players.length}` 
-        });
-      }
-  
-      // Récupérer les joueurs en base de données avec uniquement _id, name et winRate
-      const playerData = await Player.find(
-        { _id: { $in: players.map(p => p.id) } }, 
-        "_id name winRate"
-      );
-  
-      if (playerData.length !== 10) {
-        return res.status(400).json({ 
-          error: `Certains joueurs n'ont pas été trouvés. Attendu : 10, Trouvé : ${playerData.length}` 
-        });
-      }
-  
-      if (DEBUG) console.log("Création d'équipes équilibrées pour 10 joueurs...");
-  
-      // Méthode 1: Algorithme amélioré de distribution par paires
-      // Cette méthode donne généralement un meilleur équilibre que la méthode greedy
-      const balancedTeams = createBalancedTeamsByPairs(playerData);
-      
-      // Méthode 2: Algorithme greedy (commenté, mais disponible comme alternative)
-      // const balancedTeams = createBalancedTeamsGreedy(playerData);
-  
-      // Calcul des métriques de l'équilibrage
-      const metrics = calculateTeamMetrics(balancedTeams.blueTeam, balancedTeams.redTeam);
-  
-      if (DEBUG) {
-        console.log("Équipes équilibrées :");
-        console.log(`Équipe bleue (${metrics.blueTotalWinRate.toFixed(2)}): ${balancedTeams.blueTeam.map(p => p.name).join(', ')}`);
-        console.log(`Équipe rouge (${metrics.redTotalWinRate.toFixed(2)}): ${balancedTeams.redTeam.map(p => p.name).join(', ')}`);
-        console.log(`Différence de winRate: ${metrics.winRateDifference.toFixed(2)}`);
-      }
-  
-      // Retourner les équipes et les métriques
-      res.status(200).json({ 
-        blueTeam: balancedTeams.blueTeam, 
-        redTeam: balancedTeams.redTeam,
-        metrics: metrics
+  try {
+    const { players } = req.body;
+    const DEBUG = process.env.DEBUG_TEAM_BALANCE === 'true';
+
+    // Validation de l'entrée
+    if (!Array.isArray(players)) {
+      return res.status(400).json({ error: "Format de données invalide. Un tableau de joueurs est attendu." });
+    }
+
+    if (players.length !== 10) {
+      return res.status(400).json({ 
+        error: `Il doit y avoir exactement 10 joueurs. Reçu : ${players.length}` 
       });
-    } catch (error) {
-      console.error("Erreur lors de la création des équipes équilibrées :", error);
-      res.status(500).json({ error: "Erreur interne lors de la création des équipes équilibrées." });
     }
+
+    // Récupérer les joueurs en base de données avec uniquement _id, name et winRate
+    const playerData = await Player.find(
+      { _id: { $in: players.map(p => p.id) } }, 
+      "_id name winRate"
+    );
+
+    if (playerData.length !== 10) {
+      return res.status(400).json({ 
+        error: `Certains joueurs n'ont pas été trouvés. Attendu : 10, Trouvé : ${playerData.length}` 
+      });
+    }
+
+    if (DEBUG) console.log("Création d'équipes équilibrées pour 10 joueurs...");
+
+    // Méthode améliorée avec optimisation d'échange de joueurs
+    const balancedTeams = createOptimizedBalancedTeams(playerData);
+    
+    // Calcul des métriques de l'équilibrage
+    const metrics = calculateTeamMetrics(balancedTeams.blueTeam, balancedTeams.redTeam);
+
+    if (DEBUG) {
+      console.log("Équipes équilibrées :");
+      console.log(`Équipe bleue (${metrics.blueTotalWinRate.toFixed(4)}): ${balancedTeams.blueTeam.map(p => p.name).join(', ')}`);
+      console.log(`Équipe rouge (${metrics.redTotalWinRate.toFixed(4)}): ${balancedTeams.redTeam.map(p => p.name).join(', ')}`);
+      console.log(`Différence de winRate: ${metrics.winRateDifference.toFixed(4)}`);
+    }
+
+    // Retourner les équipes et les métriques
+    res.status(200).json({ 
+      blueTeam: balancedTeams.blueTeam, 
+      redTeam: balancedTeams.redTeam,
+      metrics: metrics
+    });
+  } catch (error) {
+    console.error("Erreur lors de la création des équipes équilibrées :", error);
+    res.status(500).json({ error: "Erreur interne lors de la création des équipes équilibrées." });
+  }
+};
+
+/**
+ * Crée des équipes optimisées avec multiples approches et optimisation par échange
+ * @param {Array} players - Tableau de joueurs avec _id, name et winRate
+ * @returns {Object} Équipes bleue et rouge
+ */
+function createOptimizedBalancedTeams(players) {
+  // Préparer les joueurs avec le format attendu
+  const formattedPlayers = players.map(p => ({
+    id: p._id,
+    name: p.name,
+    winRate: p.winRate
+  }));
+  
+  // Essayer plusieurs méthodes et garder la meilleure
+  const teamsByPairs = createBalancedTeamsByPairs(formattedPlayers);
+  const teamsGreedy = createBalancedTeamsGreedy(formattedPlayers);
+  const teamsRandom = createMultipleRandomTeams(formattedPlayers, 50); // Essayer 50 distributions aléatoires
+  
+  const allCandidates = [teamsByPairs, teamsGreedy, ...teamsRandom];
+  
+  // Trouver la configuration initiale avec la plus petite différence
+  let bestTeams = allCandidates.reduce((best, current) => {
+    const currentDiff = Math.abs(
+      calculateTotalWinRate(current.blueTeam) - 
+      calculateTotalWinRate(current.redTeam)
+    );
+    const bestDiff = Math.abs(
+      calculateTotalWinRate(best.blueTeam) - 
+      calculateTotalWinRate(best.redTeam)
+    );
+    return currentDiff < bestDiff ? current : best;
+  }, allCandidates[0]);
+  
+  // Effectuer une optimisation par échange de joueurs pour affiner l'équilibre
+  return optimizeTeamsBySwapping(bestTeams.blueTeam, bestTeams.redTeam);
+}
+
+/**
+ * Optimise les équipes en essayant tous les échanges possibles de joueurs entre équipes
+ * @param {Array} blueTeam - Équipe bleue initiale
+ * @param {Array} redTeam - Équipe rouge initiale 
+ * @returns {Object} Équipes bleue et rouge optimisées
+ */
+function optimizeTeamsBySwapping(blueTeam, redTeam) {
+  let bestBlueTeam = [...blueTeam];
+  let bestRedTeam = [...redTeam];
+  let bestDifference = Math.abs(
+    calculateTotalWinRate(bestBlueTeam) - 
+    calculateTotalWinRate(bestRedTeam)
+  );
+  
+  // Si la différence est déjà presque nulle, pas besoin d'optimiser davantage
+  if (bestDifference < 0.0001) {
+    return { blueTeam: bestBlueTeam, redTeam: bestRedTeam };
+  }
+  
+  let improvement = true;
+  let iterations = 0;
+  const MAX_ITERATIONS = 100; // Éviter les boucles infinies
+  
+  // Continuer à chercher des améliorations tant qu'on en trouve
+  while (improvement && iterations < MAX_ITERATIONS) {
+    improvement = false;
+    iterations++;
+    
+    // Essayer tous les échanges possibles de joueurs entre les équipes
+    for (let i = 0; i < bestBlueTeam.length; i++) {
+      for (let j = 0; j < bestRedTeam.length; j++) {
+        // Créer de nouvelles équipes avec l'échange
+        const newBlueTeam = [...bestBlueTeam];
+        const newRedTeam = [...bestRedTeam];
+        
+        // Échanger les joueurs
+        const temp = newBlueTeam[i];
+        newBlueTeam[i] = newRedTeam[j];
+        newRedTeam[j] = temp;
+        
+        // Calculer la nouvelle différence
+        const newDifference = Math.abs(
+          calculateTotalWinRate(newBlueTeam) - 
+          calculateTotalWinRate(newRedTeam)
+        );
+        
+        // Si cet échange améliore l'équilibre, le conserver
+        if (newDifference < bestDifference) {
+          bestBlueTeam = newBlueTeam;
+          bestRedTeam = newRedTeam;
+          bestDifference = newDifference;
+          improvement = true;
+          break; // On a trouvé une amélioration, recommencer avec les nouvelles équipes
+        }
+      }
+      
+      if (improvement) break;
+    }
+    
+    // Si la différence est devenue très faible, on peut s'arrêter
+    if (bestDifference < 0.0001) break;
+  }
+  
+  return { blueTeam: bestBlueTeam, redTeam: bestRedTeam };
+}
+
+/**
+ * Crée plusieurs configurations d'équipes aléatoires et renvoie les meilleures
+ * @param {Array} players - Tableau des joueurs
+ * @param {Number} attempts - Nombre de tentatives à effectuer 
+ * @returns {Array} Tableau des meilleures configurations d'équipes
+ */
+function createMultipleRandomTeams(players, attempts) {
+  const teams = [];
+  
+  for (let i = 0; i < attempts; i++) {
+    // Mélanger les joueurs de façon aléatoire
+    const shuffledPlayers = [...players].sort(() => Math.random() - 0.5);
+    
+    // Créer les équipes
+    const blueTeam = shuffledPlayers.slice(0, 5);
+    const redTeam = shuffledPlayers.slice(5, 10);
+    
+    teams.push({ blueTeam, redTeam });
+  }
+  
+  // Trier les configurations par différence de win rate
+  return teams.sort((a, b) => {
+    const diffA = Math.abs(
+      calculateTotalWinRate(a.blueTeam) - 
+      calculateTotalWinRate(a.redTeam)
+    );
+    const diffB = Math.abs(
+      calculateTotalWinRate(b.blueTeam) - 
+      calculateTotalWinRate(b.redTeam)
+    );
+    return diffA - diffB;
+  });
+}
+
+/**
+ * Utilitaire pour calculer le winrate total d'une équipe
+ * @param {Array} team - Équipe de joueurs
+ * @returns {Number} Winrate total
+ */
+function calculateTotalWinRate(team) {
+  return team.reduce((sum, player) => sum + player.winRate, 0);
+}
+
+/**
+ * Crée des équipes équilibrées en utilisant une approche par paires améliorée
+ * @param {Array} players - Tableau de joueurs avec id, name et winRate
+ * @returns {Object} Équipes bleue et rouge
+ */
+function createBalancedTeamsByPairs(players) {
+  // Trier les joueurs du plus fort au plus faible
+  const sortedPlayers = [...players].sort((a, b) => b.winRate - a.winRate);
+  
+  // Créer des paires de joueurs (meilleur + moins bon)
+  const pairs = [];
+  const n = sortedPlayers.length;
+  
+  for (let i = 0; i < n / 2; i++) {
+    pairs.push([sortedPlayers[i], sortedPlayers[n - 1 - i]]);
+  }
+  
+  // Distribuer les paires entre les équipes
+  let blueTeam = [];
+  let redTeam = [];
+  let blueTotalWinRate = 0;
+  let redTotalWinRate = 0;
+  
+  for (const [p1, p2] of pairs) {
+    // Calculer quelle distribution donne le meilleur équilibre
+    const blueWithP1 = blueTotalWinRate + p1.winRate;
+    const redWithP2 = redTotalWinRate + p2.winRate;
+    const diff1 = Math.abs(blueWithP1 - redWithP2);
+    
+    const blueWithP2 = blueTotalWinRate + p2.winRate;
+    const redWithP1 = redTotalWinRate + p1.winRate;
+    const diff2 = Math.abs(blueWithP2 - redWithP1);
+    
+    if (diff1 <= diff2) {
+      blueTeam.push(p1);
+      redTeam.push(p2);
+      blueTotalWinRate += p1.winRate;
+      redTotalWinRate += p2.winRate;
+    } else {
+      blueTeam.push(p2);
+      redTeam.push(p1);
+      blueTotalWinRate += p2.winRate;
+      redTotalWinRate += p1.winRate;
+    }
+  }
+  
+  return { blueTeam, redTeam };
+}
+
+/**
+ * Crée des équipes équilibrées en utilisant un algorithme greedy simple
+ * @param {Array} players - Tableau de joueurs avec id, name et winRate
+ * @returns {Object} Équipes bleue et rouge
+ */
+function createBalancedTeamsGreedy(players) {
+  // Trier les joueurs du plus fort au plus faible
+  const sortedPlayers = [...players].sort((a, b) => b.winRate - a.winRate);
+  
+  let blueTeam = [];
+  let redTeam = [];
+  let blueTotalWinRate = 0;
+  let redTotalWinRate = 0;
+  
+  // Distribution alternée des joueurs pour un meilleur équilibre
+  for (let i = 0; i < sortedPlayers.length; i++) {
+    const player = sortedPlayers[i];
+    
+    if (blueTotalWinRate <= redTotalWinRate) {
+      blueTeam.push(player);
+      blueTotalWinRate += player.winRate;
+    } else {
+      redTeam.push(player);
+      redTotalWinRate += player.winRate;
+    }
+  }
+  
+  return { blueTeam, redTeam };
+}
+
+/**
+ * Calcule les métriques d'équilibrage des équipes
+ * @param {Array} blueTeam - Équipe bleue
+ * @param {Array} redTeam - Équipe rouge
+ * @returns {Object} Métriques d'équilibrage
+ */
+function calculateTeamMetrics(blueTeam, redTeam) {
+  const blueTotalWinRate = blueTeam.reduce((sum, player) => sum + player.winRate, 0);
+  const redTotalWinRate = redTeam.reduce((sum, player) => sum + player.winRate, 0);
+  
+  const blueAverageWinRate = blueTotalWinRate / blueTeam.length;
+  const redAverageWinRate = redTotalWinRate / redTeam.length;
+  
+  const winRateDifference = Math.abs(blueTotalWinRate - redTotalWinRate);
+  const averageWinRateDifference = Math.abs(blueAverageWinRate - redAverageWinRate);
+  
+  // Calculer l'écart-type pour voir l'homogénéité des équipes
+  const blueStdDev = calculateStandardDeviation(blueTeam.map(p => p.winRate));
+  const redStdDev = calculateStandardDeviation(redTeam.map(p => p.winRate));
+  
+  // Calculer la qualité d'équilibrage (100 = parfait)
+  // Plus sophistiqué: prendre en compte à la fois la différence de winrate et l'écart-type
+  const balanceQuality = 100 - (winRateDifference * 100) - 
+    Math.max(0, (Math.abs(blueStdDev - redStdDev) * 10));
+  
+  return {
+    blueTotalWinRate,
+    redTotalWinRate,
+    blueAverageWinRate,
+    redAverageWinRate,
+    winRateDifference,
+    averageWinRateDifference,
+    blueStdDev,
+    redStdDev,
+    balanceQuality: Math.max(0, balanceQuality) // Éviter les valeurs négatives
   };
-  
-  /**
-   * Crée des équipes équilibrées en utilisant une approche par paires
-   * Cette approche groupe les joueurs par paires (meilleur + moins bon) et distribue ces paires
-   * @param {Array} players - Tableau de joueurs avec _id, name et winRate
-   * @returns {Object} Équipes bleue et rouge
-   */
-  function createBalancedTeamsByPairs(players) {
-    // Trier les joueurs du plus fort au plus faible
-    const sortedPlayers = [...players].sort((a, b) => b.winRate - a.winRate);
-    
-    // Créer des paires de joueurs (meilleur + moins bon)
-    const pairs = [];
-    const n = sortedPlayers.length;
-    
-    for (let i = 0; i < n / 2; i++) {
-      pairs.push([
-        { id: sortedPlayers[i]._id, name: sortedPlayers[i].name, winRate: sortedPlayers[i].winRate },
-        { id: sortedPlayers[n - 1 - i]._id, name: sortedPlayers[n - 1 - i].name, winRate: sortedPlayers[n - 1 - i].winRate }
-      ]);
-    }
-    
-    // Distribuer les paires entre les équipes
-    let blueTeam = [];
-    let redTeam = [];
-    let blueTotalWinRate = 0;
-    let redTotalWinRate = 0;
-    
-    for (const [p1, p2] of pairs) {
-      // Calculer quelle distribution donne le meilleur équilibre
-      const blueWithP1 = blueTotalWinRate + p1.winRate;
-      const redWithP2 = redTotalWinRate + p2.winRate;
-      const diff1 = Math.abs(blueWithP1 - redWithP2);
-      
-      const blueWithP2 = blueTotalWinRate + p2.winRate;
-      const redWithP1 = redTotalWinRate + p1.winRate;
-      const diff2 = Math.abs(blueWithP2 - redWithP1);
-      
-      if (diff1 <= diff2) {
-        blueTeam.push(p1);
-        redTeam.push(p2);
-        blueTotalWinRate += p1.winRate;
-        redTotalWinRate += p2.winRate;
-      } else {
-        blueTeam.push(p2);
-        redTeam.push(p1);
-        blueTotalWinRate += p2.winRate;
-        redTotalWinRate += p1.winRate;
-      }
-    }
-    
-    return { blueTeam, redTeam };
-  }
-  
-  /**
-   * Crée des équipes équilibrées en utilisant un algorithme greedy simple
-   * @param {Array} players - Tableau de joueurs avec _id, name et winRate
-   * @returns {Object} Équipes bleue et rouge
-   */
-  function createBalancedTeamsGreedy(players) {
-    // Trier les joueurs du plus fort au plus faible
-    const sortedPlayers = [...players].sort((a, b) => b.winRate - a.winRate);
-    
-    let blueTeam = [];
-    let redTeam = [];
-    let blueTotalWinRate = 0;
-    let redTotalWinRate = 0;
-    
-    // Distribution alternée des joueurs pour un meilleur équilibre
-    for (let i = 0; i < sortedPlayers.length; i++) {
-      const player = {
-        id: sortedPlayers[i]._id,
-        name: sortedPlayers[i].name,
-        winRate: sortedPlayers[i].winRate
-      };
-      
-      if (blueTotalWinRate <= redTotalWinRate) {
-        blueTeam.push(player);
-        blueTotalWinRate += player.winRate;
-      } else {
-        redTeam.push(player);
-        redTotalWinRate += player.winRate;
-      }
-    }
-    
-    return { blueTeam, redTeam };
-  }
-  
-  /**
-   * Calcule les métriques d'équilibrage des équipes
-   * @param {Array} blueTeam - Équipe bleue
-   * @param {Array} redTeam - Équipe rouge
-   * @returns {Object} Métriques d'équilibrage
-   */
-  function calculateTeamMetrics(blueTeam, redTeam) {
-    const blueTotalWinRate = blueTeam.reduce((sum, player) => sum + player.winRate, 0);
-    const redTotalWinRate = redTeam.reduce((sum, player) => sum + player.winRate, 0);
-    
-    const blueAverageWinRate = blueTotalWinRate / blueTeam.length;
-    const redAverageWinRate = redTotalWinRate / redTeam.length;
-    
-    const winRateDifference = Math.abs(blueTotalWinRate - redTotalWinRate);
-    const averageWinRateDifference = Math.abs(blueAverageWinRate - redAverageWinRate);
-    
-    // Calculer l'écart-type pour voir l'homogénéité des équipes
-    const blueStdDev = calculateStandardDeviation(blueTeam.map(p => p.winRate));
-    const redStdDev = calculateStandardDeviation(redTeam.map(p => p.winRate));
-    
-    return {
-      blueTotalWinRate,
-      redTotalWinRate,
-      blueAverageWinRate,
-      redAverageWinRate,
-      winRateDifference,
-      averageWinRateDifference,
-      blueStdDev,
-      redStdDev,
-      balanceQuality: 100 - (winRateDifference * 100) // Score de qualité de l'équilibrage (100 = parfait)
-    };
-  }
-  
-  /**
-   * Calcule l'écart-type d'un ensemble de valeurs
-   * @param {Array} values - Tableau de valeurs numériques
-   * @returns {Number} Écart-type
-   */
-  function calculateStandardDeviation(values) {
-    const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
-    const squaredDiffs = values.map(val => Math.pow(val - mean, 2));
-    const variance = squaredDiffs.reduce((sum, val) => sum + val, 0) / values.length;
-    return Math.sqrt(variance);
-  }
+}
+
+/**
+ * Calcule l'écart-type d'un ensemble de valeurs
+ * @param {Array} values - Tableau de valeurs numériques
+ * @returns {Number} Écart-type
+ */
+function calculateStandardDeviation(values) {
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const squaredDifferences = values.map(value => Math.pow(value - mean, 2));
+  const variance = squaredDifferences.reduce((sum, value) => sum + value, 0) / values.length;
+  return Math.sqrt(variance);
+}
   
 
 // 🔹 Fonction pour équilibrer les équipes AVEC assignation des lanes
