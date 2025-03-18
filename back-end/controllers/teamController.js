@@ -17,10 +17,10 @@ export const balanceTeams = async (req, res) => {
       });
     }
 
-    // Récupérer les joueurs en base de données avec uniquement _id, name et winRate
+    // Récupérer les joueurs en base de données avec _id, name, winRate et gamesPlayed
     const playerData = await Player.find(
       { _id: { $in: players.map(p => p.id) } }, 
-      "_id name winRate"
+      "_id name winRate gamesPlayed"
     );
 
     if (playerData.length !== 10) {
@@ -31,8 +31,18 @@ export const balanceTeams = async (req, res) => {
 
     if (DEBUG) console.log("Création d'équipes équilibrées pour 10 joueurs...");
 
+    // Appliquer un winRate de 50% aux joueurs n'ayant joué aucune partie
+    const normalizedPlayerData = playerData.map(player => {
+      // Si gamesPlayed est égal à 0, on attribue un winRate de 50% (0.5)
+      if (player.gamesPlayed === 0) {
+        if (DEBUG) console.log(`Joueur ${player.name} sans parties (gamesPlayed: 0): attribution d'un winRate de 50%`);
+        return { ...player.toObject(), winRate: 0.5 };
+      }
+      return player;
+    });
+
     // Méthode améliorée avec optimisation d'échange de joueurs
-    const balancedTeams = createOptimizedBalancedTeams(playerData);
+    const balancedTeams = createOptimizedBalancedTeams(normalizedPlayerData);
     
     // Calcul des métriques de l'équilibrage
     const metrics = calculateTeamMetrics(balancedTeams.blueTeam, balancedTeams.redTeam);
