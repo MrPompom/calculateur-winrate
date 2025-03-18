@@ -215,3 +215,92 @@ export const generateTournamentCode = async (tournamentId, options = {}) => {
     throw error;
   }
 };
+
+// Ajoutez ces fonctions à votre api_service.js
+
+/**
+ * Récupérer toutes les configurations de tournoi
+ */
+export const getAllTournamentConfigs = async () => {
+  try {
+    const response = await axios.get(`${API_URL}/api/tournament-config`);
+    return response.data;
+  } catch (error) {
+    console.error('❌ Erreur lors de la récupération des configurations de tournoi:', error);
+    throw error;
+  }
+};
+
+/**
+ * Récupérer la configuration de tournoi active
+ */
+export const getActiveTournamentConfig = async () => {
+  try {
+    const response = await axios.get(`${API_URL}/api/tournament-config/active`);
+    return response.data;
+  } catch (error) {
+    console.error('❌ Erreur lors de la récupération de la configuration active:', error);
+    throw error;
+  }
+};
+
+/**
+ * Créer une nouvelle configuration de tournoi
+ */
+export const createTournamentConfig = async (name, region = 'EUW') => {
+  try {
+    const response = await axios.post(`${API_URL}/api/tournament-config`, { name, region });
+    return response.data;
+  } catch (error) {
+    console.error('❌ Erreur lors de la création de la configuration de tournoi:', error);
+    throw error;
+  }
+};
+
+/**
+ * Définir une configuration comme active
+ */
+export const setActiveTournamentConfig = async (configId) => {
+  try {
+    const response = await axios.put(`${API_URL}/api/tournament-config/${configId}/activate`);
+    return response.data;
+  } catch (error) {
+    console.error('❌ Erreur lors de la définition de la configuration active:', error);
+    throw error;
+  }
+};
+
+/**
+ * Générer un code de tournoi avec la configuration active
+ */
+export const generateTournamentCodeWithConfig = async (options = {}) => {
+  try {
+    const defaultOptions = {
+      teamSize: 5,
+      spectatorType: "ALL",
+      pickType: "TOURNAMENT_DRAFT",
+      mapType: "SUMMONERS_RIFT"
+    };
+    
+    const requestOptions = { ...defaultOptions, ...options };
+    
+    const response = await axios.post(`${API_URL}/api/tournament-config/code`, requestOptions);
+    return response.data;
+  } catch (error) {
+    console.error('❌ Erreur lors de la génération du code de tournoi:', error);
+    throw error;
+  }
+};
+
+/**
+ * Supprimer une configuration de tournoi
+ */
+export const deleteTournamentConfig = async (configId) => {
+  try {
+    const response = await axios.delete(`${API_URL}/api/tournament-config/${configId}`);
+    return response.data;
+  } catch (error) {
+    console.error('❌ Erreur lors de la suppression de la configuration de tournoi:', error);
+    throw error;
+  }
+};

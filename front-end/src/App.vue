@@ -47,6 +47,16 @@
               <span class="icon-wrapper bg-purple-500 hover:bg-purple-400">🎮</span>
               <span>Créer Équipes</span>
             </router-link>
+            <RouterLink 
+  to="/admin/tournament" 
+  class="flex items-center px-4 py-2 text-gray-600 rounded-lg hover:bg-gray-100"
+  active-class="bg-blue-50 text-blue-600"
+>
+  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+  </svg>
+  Tournois
+</RouterLink>
           </nav>
         </div>
         
