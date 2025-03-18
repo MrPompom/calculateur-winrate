@@ -62,7 +62,7 @@ export const createTournamentConfig = async (req, res) => {
     }
     
     // Déterminer l'URL de l'API (stub ou production)
-    const isTest = process.env.NODE_ENV !== 'production';
+    const isTest = process.env.USE_TOURNAMENT_STUB === 'true' || process.env.NODE_ENV !== 'production';
     const apiUrl = isTest 
       ? 'https://americas.api.riotgames.com/lol/tournament-stub/v5/providers'
       : 'https://americas.api.riotgames.com/lol/tournament/v5/providers';
