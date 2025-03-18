@@ -153,3 +153,65 @@ export const syncPlayerWithRiot = async (playerData) => {
   }
 };
 
+export const refreshRiotPlayerStats = async (playerId) => {
+  try {
+    const response = await axios.post(`${API_URL}/players/${playerId}/refresh-riot`);
+    return response.data;
+  } catch (error) {
+    console.error('Erreur lors de la mise à jour des statistiques Riot:', error);
+    throw error;
+  }
+};
+
+// 🏆 Récupérer les matchs de tournoi test
+export const getTournamentTestGames = async () => {
+  try {
+    const response = await axios.get(`${API_URL}/games/tournament/games`);
+    return response.data;
+  } catch (error) {
+    console.error('❌ Erreur lors de la récupération des matchs de tournoi:', error);
+    throw error;
+  }
+};
+
+// 🏢 Créer un fournisseur de tournoi
+export const createTournamentProvider = async () => {
+  try {
+    const response = await axios.post(`${API_URL}/games/tournament/provider`);
+    return response.data;
+  } catch (error) {
+    console.error('❌ Erreur lors de la création du fournisseur de tournoi:', error);
+    throw error;
+  }
+};
+
+// 🏟️ Créer un tournoi
+export const createTournament = async (providerId, name) => {
+  try {
+    const response = await axios.post(`${API_URL}/games/tournament/create`, { providerId, name });
+    return response.data;
+  } catch (error) {
+    console.error('❌ Erreur lors de la création du tournoi:', error);
+    throw error;
+  }
+};
+
+// 🎟️ Générer un code de tournoi
+export const generateTournamentCode = async (tournamentId, options = {}) => {
+  try {
+    const defaultOptions = {
+      teamSize: 5,
+      spectatorType: "ALL",
+      pickType: "TOURNAMENT_DRAFT",
+      mapType: "SUMMONERS_RIFT"
+    };
+    
+    const requestOptions = { ...defaultOptions, ...options, tournamentId };
+    
+    const response = await axios.post(`${API_URL}/games/tournament/code`, requestOptions);
+    return response.data;
+  } catch (error) {
+    console.error('❌ Erreur lors de la génération du code de tournoi:', error);
+    throw error;
+  }
+};

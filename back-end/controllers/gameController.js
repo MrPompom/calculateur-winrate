@@ -1,5 +1,11 @@
 import Game from "../models/Game.js";
 import Player from "../models/Player.js";
+import axios from "axios"; // Assurez-vous d'installer axios: npm install axios
+
+// Configuration pour l'API Riot
+// Idéalement, ces valeurs devraient être dans des variables d'environnement
+const RIOT_API_KEY = process.env.RIOT_API_KEY; // À définir dans .env
+const CALLBACK_URL = "https://calculateur-winrate.vercel.app/riot/tournament-results";
 
 export const createGame = async (req, res) => {
   try {
@@ -38,7 +44,11 @@ export const createGame = async (req, res) => {
       };
     }));
 
-    const newGame = new Game({ players: updatedPlayers, winningTeam });
+    const newGame = new Game({ 
+      players: updatedPlayers, 
+      winningTeam,
+      isTournamentMatch: false, // Indiquer qu'il ne s'agit pas d'un match de tournoi
+    });
     await newGame.save();
 
     res.status(201).json({ message: 'Game enregistrée avec succès', gameId: newGame._id });
@@ -49,14 +59,162 @@ export const createGame = async (req, res) => {
 
 export const getAllGames = async (req, res) => {
   try {
-    const games = await Game.find().populate("players.playerId");
+    // Exclure les matchs de tournoi test par défaut
+    const games = await Game.find({ isTestTournament: { $ne: true } }).populate("players.playerId");
     res.status(200).json(games);
   } catch (error) {
     res.status(500).json({ error: "Erreur lors de la récupération des games" });
   }
 };
 
-// Nouvelle fonction pour gérer les callbacks de l'API Riot Tournament
+// Nouvelle fonction pour créer un fournisseur de tournoi en mode test
+export const createTournamentProvider = async (req, res) => {
+  try {
+    console.log("Riot API Key disponible:", !!process.env.RIOT_API_KEY);
+    const apiKey = process.env.RIOT_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ 
+        success: false, 
+        error: "Clé API Riot non configurée"
+      });
+    }
+    const response = await axios.post(
+      'https://americas.api.riotgames.com/lol/tournament-stub/v5/providers',
+      {
+        region: "EUW",
+        url: CALLBACK_URL
+      },
+      {
+        headers: {
+          'X-Riot-Token': apiKey,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    // Le providerId est directement retourné comme un entier
+    const providerId = response.data;
+    
+    res.status(201).json({
+      success: true,
+      providerId: providerId,
+      message: 'Fournisseur de tournoi créé avec succès'
+    });
+  } catch (error) {
+    console.error("Erreur lors de la création du fournisseur de tournoi:", error.response?.data || error.message);
+    res.status(500).json({
+      success: false,
+      error: "Erreur lors de la création du fournisseur de tournoi",
+      details: error.response?.data || error.message
+    });
+  }
+};
+
+// Nouvelle fonction pour créer un tournoi en mode test
+export const createTournament = async (req, res) => {
+  try {
+    const { providerId, name } = req.body;
+
+    console.log("Riot API Key disponible:", !!process.env.RIOT_API_KEY);
+    const apiKey = process.env.RIOT_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ 
+        success: false, 
+        error: "Clé API Riot non configurée"
+      });
+    }
+    
+    if (!providerId) {
+      return res.status(400).json({ success: false, error: "ProviderId requis" });
+    }
+
+    const response = await axios.post(
+      'https://americas.api.riotgames.com/lol/tournament-stub/v5/tournaments',
+      {
+        name: name || "Tournoi Custom",
+        providerId: parseInt(providerId)
+      },
+      {
+        headers: {
+          'X-Riot-Token': apiKey,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    // Le tournamentId est directement retourné comme un entier
+    const tournamentId = response.data;
+    
+    res.status(201).json({
+      success: true,
+      tournamentId: tournamentId,
+      message: 'Tournoi créé avec succès'
+    });
+  } catch (error) {
+    console.error("Erreur lors de la création du tournoi:", error.response?.data || error.message);
+    res.status(500).json({
+      success: false,
+      error: "Erreur lors de la création du tournoi",
+      details: error.response?.data || error.message
+    });
+  }
+};
+
+// Nouvelle fonction pour générer un code de tournoi
+export const generateTournamentCode = async (req, res) => {
+  try {
+    const { tournamentId, teamSize, spectatorType, pickType, mapType, metadata } = req.body;
+    const apiKey = process.env.RIOT_API_KEY;
+    if (!tournamentId) {
+      return res.status(400).json({ success: false, error: "TournamentId requis" });
+    }
+
+    const response = await axios.post(
+      `https://americas.api.riotgames.com/lol/tournament-stub/v5/codes?count=1&tournamentId=${tournamentId}`,
+      {
+        mapType: mapType || "SUMMONERS_RIFT",
+        pickType: pickType || "TOURNAMENT_DRAFT",
+        spectatorType: spectatorType || "ALL",
+        teamSize: teamSize || 5,
+        metadata: metadata || "" // Informations supplémentaires (optionnel)
+      },
+      {
+        headers: {
+          'X-Riot-Token': apiKey,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    // Les codes sont retournés dans un tableau
+    const tournamentCodes = response.data;
+    
+    res.status(201).json({
+      success: true,
+      tournamentCodes: tournamentCodes,
+      message: 'Code de tournoi généré avec succès'
+    });
+  } catch (error) {
+    console.error("Erreur lors de la génération du code de tournoi:", error.response?.data || error.message);
+    res.status(500).json({
+      success: false,
+      error: "Erreur lors de la génération du code de tournoi",
+      details: error.response?.data || error.message
+    });
+  }
+};
+
+// Fonction pour récupérer uniquement les matchs de tournoi test
+export const getTournamentTestGames = async (req, res) => {
+  try {
+    const games = await Game.find({ isTestTournament: true }).populate("players.playerId");
+    res.status(200).json(games);
+  } catch (error) {
+    res.status(500).json({ error: "Erreur lors de la récupération des matchs de tournoi test" });
+  }
+};
+
+// Fonction de webhook pour traiter les résultats des matchs de tournoi
 export const handleTournamentResults = async (req, res) => {
   try {
     console.log("Données de tournoi reçues:", JSON.stringify(req.body));
@@ -117,6 +275,12 @@ export const handleTournamentResults = async (req, res) => {
       // Données spécifiques à notre application
       players: updatedPlayers,
       winningTeam: winningTeam,
+      
+      // Indiquer qu'il s'agit d'un match de tournoi
+      isTournamentMatch: true,
+      
+      // Indiquer s'il s'agit d'un tournoi de test (stub)
+      isTestTournament: true, // Mettre à false pour les tournois de production
       
       // Métadonnées du match
       gameId: riotData.gameId,

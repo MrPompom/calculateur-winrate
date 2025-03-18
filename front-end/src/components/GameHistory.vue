@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, nextTick, watch } from 'vue';
-import { getAllGames } from '../services/api_service';
+import { getAllGames, getTournamentTestGames, createTournamentProvider, createTournament, generateTournamentCode } from '../services/api_service';
 import { useToast } from 'vue-toastification';
 
 const gamesList = ref([]);
@@ -14,6 +14,28 @@ const selectedDate = ref(null);
 const currentPage = ref(1);
 const gamesPerPage = 5;
 const toast = useToast();
+
+// Mode d'affichage: normal ou tournoi test
+const viewMode = ref('normal'); // 'normal' ou 'tournament'
+
+// Paramètres de création de tournoi
+const tournamentPanel = ref(false);
+const providerId = ref('');
+const tournamentId = ref('');
+const tournamentName = ref('');
+const tournamentCode = ref('');
+const isCreatingProvider = ref(false);
+const isCreatingTournament = ref(false);
+const isGeneratingCode = ref(false);
+
+// Options de tournoi
+const teamSize = ref(5);
+const spectatorTypes = ['ALL', 'LOBBYONLY', 'NONE'];
+const spectatorType = ref('ALL');
+const pickTypes = ['BLIND_PICK', 'DRAFT_MODE', 'TOURNAMENT_DRAFT', 'ALL_RANDOM'];
+const pickType = ref('TOURNAMENT_DRAFT');
+const mapTypes = ['SUMMONERS_RIFT', 'HOWLING_ABYSS'];
+const mapType = ref('SUMMONERS_RIFT');
 
 // Fonction pour formater les noms de champions pour les URL d'images
 const formatChampionImageName = (champ) => {
@@ -134,13 +156,25 @@ const changePage = (page) => {
   }
 };
 
+// Changer le mode d'affichage (normal/tournoi)
+const switchViewMode = (mode) => {
+  viewMode.value = mode;
+  fetchGames();
+};
+
 // Récupération des games avec gestion des erreurs
 const fetchGames = async () => {
   isLoading.value = true;
   error.value = null;
   
   try {
-    gamesList.value = await getAllGames();
+    // Récupérer les games selon le mode
+    if (viewMode.value === 'normal') {
+      gamesList.value = await getAllGames();
+    } else {
+      gamesList.value = await getTournamentTestGames();
+    }
+    
     // Tri par date (la plus récente en premier)
     gamesList.value.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     filteredGames.value = [...gamesList.value];
@@ -148,15 +182,107 @@ const fetchGames = async () => {
     if (gamesList.value.length > 0) {
       toast.success(`${gamesList.value.length} parties chargées`);
     } else {
-      toast.info("Aucune partie trouvée");
+      toast.info(`Aucune partie ${viewMode.value === 'tournament' ? 'de tournoi' : ''} trouvée`);
     }
   } catch (err) {
     console.error('Erreur lors de la récupération des games:', err);
-    error.value = "Impossible de charger l'historique des parties. Veuillez réessayer plus tard.";
+    error.value = `Impossible de charger l'historique des parties ${viewMode.value === 'tournament' ? 'de tournoi' : ''}. Veuillez réessayer plus tard.`;
     toast.error("Erreur lors du chargement des parties");
   } finally {
     isLoading.value = false;
   }
+};
+
+// Fonctions pour le panneau de tournoi
+const toggleTournamentPanel = () => {
+  tournamentPanel.value = !tournamentPanel.value;
+};
+
+// Créer un fournisseur de tournoi
+const handleCreateProvider = async () => {
+  isCreatingProvider.value = true;
+  try {
+    const response = await createTournamentProvider();
+    if (response.success) {
+      providerId.value = response.providerId;
+      toast.success(`Fournisseur de tournoi créé avec succès (ID: ${providerId.value})`);
+    } else {
+      toast.error("Échec de la création du fournisseur de tournoi");
+    }
+  } catch (error) {
+    toast.error(`Erreur: ${error.message}`);
+  } finally {
+    isCreatingProvider.value = false;
+  }
+};
+
+// Créer un tournoi
+const handleCreateTournament = async () => {
+  if (!providerId.value) {
+    toast.warning("Veuillez d'abord créer un fournisseur de tournoi");
+    return;
+  }
+  
+  if (!tournamentName.value.trim()) {
+    toast.warning("Veuillez saisir un nom de tournoi");
+    return;
+  }
+  
+  isCreatingTournament.value = true;
+  try {
+    const response = await createTournament(providerId.value, tournamentName.value);
+    if (response.success) {
+      tournamentId.value = response.tournamentId;
+      toast.success(`Tournoi "${tournamentName.value}" créé avec succès (ID: ${tournamentId.value})`);
+    } else {
+      toast.error("Échec de la création du tournoi");
+    }
+  } catch (error) {
+    toast.error(`Erreur: ${error.message}`);
+  } finally {
+    isCreatingTournament.value = false;
+  }
+};
+
+// Générer un code de tournoi
+const handleGenerateCode = async () => {
+  if (!tournamentId.value) {
+    toast.warning("Veuillez d'abord créer un tournoi");
+    return;
+  }
+  
+  isGeneratingCode.value = true;
+  try {
+    const options = {
+      teamSize: parseInt(teamSize.value),
+      spectatorType: spectatorType.value,
+      pickType: pickType.value,
+      mapType: mapType.value
+    };
+    
+    const response = await generateTournamentCode(tournamentId.value, options);
+    if (response.success && response.tournamentCodes && response.tournamentCodes.length > 0) {
+      tournamentCode.value = response.tournamentCodes[0];
+      toast.success("Code de tournoi généré avec succès");
+    } else {
+      toast.error("Échec de la génération du code de tournoi");
+    }
+  } catch (error) {
+    toast.error(`Erreur: ${error.message}`);
+  } finally {
+    isGeneratingCode.value = false;
+  }
+};
+
+// Copier le code de tournoi dans le presse-papier
+const copyTournamentCode = () => {
+  if (!tournamentCode.value) return;
+  
+  navigator.clipboard.writeText(tournamentCode.value).then(() => {
+    toast.success("Code de tournoi copié dans le presse-papier");
+  }, () => {
+    toast.error("Impossible de copier le code");
+  });
 };
 
 // Gestion des erreurs de chargement d'image
@@ -249,9 +375,160 @@ onMounted(fetchGames);
   <div class="game-history max-w-5xl mx-auto p-4">
     <h2 class="text-2xl font-bold text-center text-gray-800 mb-4">Historique des Games</h2>
 
+    <!-- Sélecteur de mode d'affichage -->
+    <div class="mb-4 flex justify-center">
+      <div class="bg-white shadow-md rounded-lg p-1 inline-flex">
+        <button 
+          @click="switchViewMode('normal')" 
+          class="px-4 py-2 rounded-md transition-colors" 
+          :class="viewMode === 'normal' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'"
+        >
+          Parties normales
+        </button>
+        <button 
+          @click="switchViewMode('tournament')" 
+          class="px-4 py-2 rounded-md transition-colors" 
+          :class="viewMode === 'tournament' ? 'bg-blue-600 text-white' : 'hover:bg-gray-100'"
+        >
+          Parties de tournoi
+        </button>
+      </div>
+    </div>
+    
+    <!-- Panneau de gestion des tournois (visible uniquement en mode tournoi) -->
+    <div v-if="viewMode === 'tournament'" class="mb-6">
+      <div class="bg-white p-4 rounded-lg shadow-md">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-lg font-semibold text-gray-800">Gestion des tournois de test</h3>
+          <button 
+            @click="toggleTournamentPanel" 
+            class="text-sm px-3 py-1 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition"
+          >
+            {{ tournamentPanel ? "Masquer" : "Afficher" }}
+          </button>
+        </div>
+        
+        <transition name="expand">
+          <div v-if="tournamentPanel" class="space-y-4">
+            <!-- Étape 1: Créer un fournisseur -->
+            <div class="p-3 border rounded-md bg-gray-50">
+              <h4 class="font-medium mb-2">1. Créer un fournisseur de tournoi</h4>
+              <div class="flex items-center">
+                <button 
+                  @click="handleCreateProvider" 
+                  class="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                  :disabled="isCreatingProvider"
+                >
+                  <span v-if="isCreatingProvider" class="inline-block animate-spin mr-1">⟳</span>
+                  Créer un fournisseur
+                </button>
+                <span v-if="providerId" class="ml-3">
+                  ID: <span class="font-mono bg-gray-200 px-1 rounded">{{ providerId }}</span>
+                </span>
+              </div>
+            </div>
+            
+            <!-- Étape 2: Créer un tournoi -->
+            <div class="p-3 border rounded-md bg-gray-50">
+              <h4 class="font-medium mb-2">2. Créer un tournoi</h4>
+              <div class="mb-2">
+                <input 
+                  v-model="tournamentName" 
+                  type="text" 
+                  placeholder="Nom du tournoi" 
+                  class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div class="flex items-center">
+                <button 
+                  @click="handleCreateTournament" 
+                  class="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                  :disabled="isCreatingTournament || !providerId"
+                >
+                  <span v-if="isCreatingTournament" class="inline-block animate-spin mr-1">⟳</span>
+                  Créer un tournoi
+                </button>
+                <span v-if="tournamentId" class="ml-3">
+                  ID: <span class="font-mono bg-gray-200 px-1 rounded">{{ tournamentId }}</span>
+                </span>
+              </div>
+            </div>
+            
+            <!-- Étape 3: Générer un code de tournoi -->
+            <div class="p-3 border rounded-md bg-gray-50">
+              <h4 class="font-medium mb-2">3. Générer un code de tournoi</h4>
+              <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+                <div>
+                  <label class="block text-sm font-medium text-gray-600 mb-1">Taille d'équipe</label>
+                  <select 
+                    v-model="teamSize" 
+                    class="w-full px-2 py-1 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option v-for="n in 5" :key="`team-${n}`" :value="n">{{ n }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-600 mb-1">Type de spectateurs</label>
+                  <select 
+                    v-model="spectatorType" 
+                    class="w-full px-2 py-1 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option v-for="type in spectatorTypes" :key="`spec-${type}`" :value="type">{{ type }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-600 mb-1">Type de sélection</label>
+                  <select 
+                    v-model="pickType" 
+                    class="w-full px-2 py-1 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option v-for="type in pickTypes" :key="`pick-${type}`" :value="type">{{ type }}</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-medium text-gray-600 mb-1">Map</label>
+                  <select 
+                    v-model="mapType" 
+                    class="w-full px-2 py-1 border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  >
+                    <option v-for="type in mapTypes" :key="`map-${type}`" :value="type">{{ type }}</option>
+                  </select>
+                </div>
+              </div>
+              <div class="flex items-center">
+                <button 
+                  @click="handleGenerateCode" 
+                  class="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                  :disabled="isGeneratingCode || !tournamentId"
+                >
+                  <span v-if="isGeneratingCode" class="inline-block animate-spin mr-1">⟳</span>
+                  Générer un code
+                </button>
+              </div>
+            </div>
+            
+            <!-- Affichage du code de tournoi -->
+            <div v-if="tournamentCode" class="p-3 border-2 border-green-500 rounded-md bg-green-50">
+              <h4 class="font-medium text-green-700 mb-2">Code de tournoi généré :</h4>
+              <div class="flex items-center">
+                <code class="bg-white p-2 border rounded font-mono text-lg flex-grow">{{ tournamentCode }}</code>
+                <button 
+                  @click="copyTournamentCode" 
+                  class="ml-2 px-3 py-2 bg-gray-200 rounded hover:bg-gray-300"
+                  title="Copier le code"
+                >
+                  📋
+                </button>
+              </div>
+            </div>
+          </div>
+        </transition>
+      </div>
+    </div>
+
     <!-- Statistiques globales -->
     <div v-if="!isLoading && !error && gamesList.length > 0" class="mb-6 bg-gray-100 p-4 rounded-lg shadow-sm">
-      <h3 class="text-lg font-semibold text-gray-700 mb-2">Statistiques</h3>
+      <h3 class="text-lg font-semibold text-gray-700 mb-2">Statistiques {{ viewMode === 'tournament' ? 'des tournois' : '' }}</h3>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div class="bg-white p-3 rounded shadow-sm">
           <p class="text-sm text-gray-600">Total</p>
@@ -321,7 +598,7 @@ onMounted(fetchGames);
     <!-- État de chargement -->
     <div v-if="isLoading" class="p-12 text-center">
       <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-2"></div>
-      <p class="text-gray-600">Chargement des parties...</p>
+      <p class="text-gray-600">Chargement des parties{{ viewMode === 'tournament' ? ' de tournoi' : '' }}...</p>
     </div>
 
     <!-- Message d'erreur -->
@@ -334,11 +611,19 @@ onMounted(fetchGames);
 
     <!-- Pas de résultats -->
     <div v-else-if="filteredGames.length === 0" class="p-8 text-center bg-gray-50 rounded-lg border border-gray-200">
-      <p v-if="gamesList.length === 0" class="text-gray-600">Aucune partie disponible.</p>
+      <p v-if="gamesList.length === 0">
+        <span v-if="viewMode === 'tournament'">Aucune partie de tournoi disponible.</span>
+        <span v-else>Aucune partie disponible.</span>
+      </p>
       <p v-else class="text-gray-600">Aucune partie ne correspond à vos critères de recherche.</p>
-      <button v-if="searchQuery || filterWinner !== 'all' || selectedDate" @click="clearFilters" class="mt-4 px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
-        Effacer les filtres
-      </button>
+      <div class="mt-4 space-x-3">
+        <button v-if="searchQuery || filterWinner !== 'all' || selectedDate" @click="clearFilters" class="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
+          Effacer les filtres
+        </button>
+        <button v-if="viewMode === 'tournament' && !tournamentPanel" @click="toggleTournamentPanel" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+          Créer un tournoi de test
+        </button>
+      </div>
     </div>
 
     <!-- Liste des games -->
@@ -355,6 +640,17 @@ onMounted(fetchGames);
             <button @click="toggleGameDetails(game._id)" class="text-sm px-3 py-1 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition">
               {{ expandedGames[game._id] ? "Masquer" : "Voir détails" }}
             </button>
+          </div>
+
+          <!-- Information de tournoi si disponible -->
+          <div v-if="game.isTournamentMatch && viewMode === 'tournament'" class="px-4 py-2 bg-purple-50 border-b border-purple-100">
+            <p class="text-sm text-purple-700">
+              <span class="font-semibold">Tournoi:</span> 
+              ID: {{ game.tournamentId || 'N/A' }}
+              <span v-if="game.tournamentCode" class="ml-2">
+                Code: <span class="font-mono">{{ game.tournamentCode }}</span>
+              </span>
+            </p>
           </div>
 
           <!-- Aperçu (toujours visible) -->
