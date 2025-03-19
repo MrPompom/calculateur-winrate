@@ -13,22 +13,260 @@ export const getAllPlayers = async (req, res) => {
       res.status(500).json({ error: "Erreur lors de la récupération des joueurs" });
     }
   };
-  
 
-export const getPlayerStats = async (req, res) => {
+  // Extensions à la fonction getPlayerStats dans le backend
+
+  export const getPlayerStats = async (req, res) => {
     try {
         const playerName = req.params.name;
         console.log(`🔍 Récupération des stats pour le joueur: ${playerName}`);
-
-        const player = await Player.findOne({ name: playerName }).lean(); // Assure une meilleure conversion en JSON
-
+        
+        const player = await Player.findOne({ name: playerName }).lean();
+        
         if (!player) {
             console.warn(`⚠ Joueur ${playerName} introuvable.`);
             return res.status(404).json({ error: "Joueur non trouvé" });
         }
-
-        console.log(`📊 Stats du joueur récupérées :`, player);
-        res.json(player);
+        
+        // Récupérer toutes les parties où ce joueur a participé
+        const games = await Game.find({
+            'players.playerId': player._id
+        }).populate('players.playerId', 'name').sort({ createdAt: -1 }).lean();
+        
+        // Structures pour stocker les données d'affinité
+        const withStats = {};
+        const againstStats = {};
+        
+        // Structures pour les nouvelles statistiques avancées
+        const champSynergies = {};
+        const counterStats = {};
+        const timeStats = {
+            byDay: {},
+            byHour: {}
+        };
+        
+        // Données pour l'analyse des tendances
+        const recentGames = games.slice(0, 20); // 20 dernières parties
+        const recentResults = [];
+        let recentWins = 0;
+        let recentKills = 0;
+        let recentDeaths = 0;
+        let recentAssists = 0;
+        
+        // Parcourir chaque partie
+        games.forEach((game, gameIndex) => {
+            // Trouver le joueur cible dans cette partie
+            const targetPlayerInGame = game.players.find(p => 
+                p.playerId && p.playerId._id && p.playerId._id.toString() === player._id.toString()
+            );
+            
+            if (!targetPlayerInGame) return; // Au cas où
+            
+            const targetSide = targetPlayerInGame.side;
+            const targetWon = targetPlayerInGame.won;
+            const targetChampion = targetPlayerInGame.champion;
+            
+            // Analyse des tendances pour les 20 dernières parties
+            if (gameIndex < 20) {
+                recentResults.push(targetWon);
+                if (targetWon) recentWins++;
+                recentKills += targetPlayerInGame.kills || 0;
+                recentDeaths += targetPlayerInGame.deaths || 0;
+                recentAssists += targetPlayerInGame.assists || 0;
+            }
+            
+            // Analyse temporelle
+            if (game.gameCreation) {
+                const gameDate = new Date(game.gameCreation);
+                const day = gameDate.getDay().toString();
+                const hour = gameDate.getHours().toString();
+                
+                // Stats par jour
+                if (!timeStats.byDay[day]) {
+                    timeStats.byDay[day] = { wins: 0, games: 0, winRate: 0 };
+                }
+                timeStats.byDay[day].games++;
+                if (targetWon) timeStats.byDay[day].wins++;
+                timeStats.byDay[day].winRate = timeStats.byDay[day].wins / timeStats.byDay[day].games;
+                
+                // Stats par heure
+                if (!timeStats.byHour[hour]) {
+                    timeStats.byHour[hour] = { wins: 0, games: 0, winRate: 0 };
+                }
+                timeStats.byHour[hour].games++;
+                if (targetWon) timeStats.byHour[hour].wins++;
+                timeStats.byHour[hour].winRate = timeStats.byHour[hour].wins / timeStats.byHour[hour].games;
+            }
+            
+            // Parcourir tous les autres joueurs de la partie
+            game.players.forEach(otherPlayer => {
+                // Ignorer le joueur lui-même ou les joueurs sans ID valide
+                if (!otherPlayer.playerId || !otherPlayer.playerId._id || 
+                    otherPlayer.playerId._id.toString() === player._id.toString()) {
+                    return;
+                }
+                
+                const otherPlayerName = otherPlayer.playerId.name;
+                const otherPlayerSide = otherPlayer.side;
+                const otherPlayerChampion = otherPlayer.champion;
+                
+                // Joueur dans la même équipe
+                if (otherPlayerSide === targetSide) {
+                    // Stats d'affinité
+                    if (!withStats[otherPlayerName]) {
+                        withStats[otherPlayerName] = { wins: 0, total: 0 };
+                    }
+                    
+                    withStats[otherPlayerName].total++;
+                    if (targetWon) {
+                        withStats[otherPlayerName].wins++;
+                    }
+                    
+                    // Analyse des synergies de champions
+                    const synergyKey = `${targetChampion}_${otherPlayerChampion}`;
+                    if (!champSynergies[synergyKey]) {
+                        champSynergies[synergyKey] = {
+                            playerChamp: targetChampion,
+                            allyChamp: otherPlayerChampion,
+                            wins: 0,
+                            games: 0,
+                            winRate: 0
+                        };
+                    }
+                    
+                    champSynergies[synergyKey].games++;
+                    if (targetWon) {
+                        champSynergies[synergyKey].wins++;
+                    }
+                    champSynergies[synergyKey].winRate = champSynergies[synergyKey].wins / champSynergies[synergyKey].games;
+                } 
+                // Joueur dans l'équipe adverse
+                else {
+                    // Stats d'affinité
+                    if (!againstStats[otherPlayerName]) {
+                        againstStats[otherPlayerName] = { wins: 0, total: 0 };
+                    }
+                    
+                    againstStats[otherPlayerName].total++;
+                    if (targetWon) {
+                        againstStats[otherPlayerName].wins++;
+                    }
+                    
+                    // Analyse des contre-picks
+                    if (!counterStats[otherPlayerChampion]) {
+                        counterStats[otherPlayerChampion] = {
+                            champion: otherPlayerChampion,
+                            wins: 0,
+                            games: 0,
+                            winRate: 0
+                        };
+                    }
+                    
+                    counterStats[otherPlayerChampion].games++;
+                    if (targetWon) {
+                        counterStats[otherPlayerChampion].wins++;
+                    }
+                    counterStats[otherPlayerChampion].winRate = counterStats[otherPlayerChampion].wins / counterStats[otherPlayerChampion].games;
+                }
+            });
+        });
+        
+        // Calculer les winrates pour chaque joueur
+        const calculateWinrate = (stats) => {
+            return Object.entries(stats).map(([name, data]) => ({
+                name,
+                games: data.total,
+                wins: data.wins,
+                winrate: data.total > 0 ? parseFloat((data.wins / data.total * 100).toFixed(2)) : 0
+            }));
+        };
+        
+        const withWinrates = calculateWinrate(withStats);
+        const againstWinrates = calculateWinrate(againstStats);
+        
+        // Trier par winrate et prendre les 2 meilleurs et les 2 pires
+        const bestWithPlayers = [...withWinrates]
+            .filter(p => p.games >= 3) // Minimum de 3 parties pour être significatif
+            .sort((a, b) => b.winrate - a.winrate)
+            .slice(0, 2);
+            
+        const worstWithPlayers = [...withWinrates]
+            .filter(p => p.games >= 3)
+            .sort((a, b) => a.winrate - b.winrate)
+            .slice(0, 2);
+            
+        const bestAgainstPlayers = [...againstWinrates]
+            .filter(p => p.games >= 3)
+            .sort((a, b) => b.winrate - a.winrate)
+            .slice(0, 2);
+            
+        const worstAgainstPlayers = [...againstWinrates]
+            .filter(p => p.games >= 3)
+            .sort((a, b) => a.winrate - b.winrate)
+            .slice(0, 2);
+        
+        // Calculer les tendances de performances
+        const recentWinRate = recentGames.length > 0 ? recentWins / recentGames.length : 0;
+        const recentKDA = recentDeaths > 0 ? (recentKills + recentAssists) / recentDeaths : (recentKills + recentAssists);
+        
+        // Comparer avec le winrate global pour déterminer la tendance
+        const trend = player.winRate > 0 ? recentWinRate - player.winRate : 0;
+        
+        // Trier les synergies de champions et les contre-picks
+        const bestChampSynergies = Object.values(champSynergies)
+            .filter(synergy => synergy.games >= 3)
+            .sort((a, b) => b.winRate - a.winRate)
+            .slice(0, 5);
+            
+        const worstChampSynergies = Object.values(champSynergies)
+            .filter(synergy => synergy.games >= 3)
+            .sort((a, b) => a.winRate - b.winRate)
+            .slice(0, 5);
+            
+        const bestCounters = Object.values(counterStats)
+            .filter(counter => counter.games >= 3)
+            .sort((a, b) => b.winRate - a.winRate)
+            .slice(0, 5);
+            
+        const worstCounters = Object.values(counterStats)
+            .filter(counter => counter.games >= 3)
+            .sort((a, b) => a.winRate - b.winRate)
+            .slice(0, 5);
+        
+        // Ajouter les statistiques avancées au joueur
+        const playerWithAdvancedStats = {
+            ...player,
+            affinityStats: {
+                with: {
+                    best: bestWithPlayers,
+                    worst: worstWithPlayers
+                },
+                against: {
+                    best: bestAgainstPlayers,
+                    worst: worstAgainstPlayers
+                }
+            },
+            champSynergies,
+            bestChampSynergies,
+            worstChampSynergies,
+            counterStats,
+            bestCounters,
+            worstCounters,
+            timeStats,
+            performanceTrends: {
+                recent: {
+                    winRate: recentWinRate,
+                    wins: recentWins,
+                    games: recentGames.length,
+                    kda: recentKDA,
+                    trend
+                },
+                results: recentResults
+            }
+        };
+        
+        console.log(`📊 Stats du joueur récupérées avec analyses avancées`);
+        res.json(playerWithAdvancedStats);
     } catch (error) {
         console.error("❌ Erreur lors de la récupération des stats du joueur :", error);
         res.status(500).json({ error: "Erreur serveur" });
